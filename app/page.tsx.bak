@@ -1,0 +1,1737 @@
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+
+type Tab =
+  | "dailyBrief"
+  | "actionItems"
+  | "positions"
+  | "tradeLog"
+  | "performance"
+  | "fundProfile"
+  | "ruleSet"
+  | "settings";
+
+type TradeType =
+  | "deposit"
+  | "withdrawal"
+  | "buy_spy"
+  | "sell_spy"
+  | "sell_xsp_call"
+  | "buy_xsp_call";
+
+type Regime = "R0" | "R1" | "R2" | "R3";
+
+interface TradeBase {
+  id: string;
+  createdAt: string;
+  date: string;
+  notes: string;
+}
+
+interface DepositTrade extends TradeBase {
+  type: "deposit";
+  amount: number;
+}
+
+interface WithdrawalTrade extends TradeBase {
+  type: "withdrawal";
+  amount: number;
+}
+
+interface BuySpyTrade extends TradeBase {
+  type: "buy_spy";
+  shares: number;
+  price: number;
+}
+
+interface SellSpyTrade extends TradeBase {
+  type: "sell_spy";
+  shares: number;
+  price: number;
+}
+
+interface SellXspCallTrade extends TradeBase {
+  type: "sell_xsp_call";
+  expiry: string;
+  strike: number;
+  contracts: number;
+  price: number;
+}
+
+interface BuyXspCallTrade extends TradeBase {
+  type: "buy_xsp_call";
+  expiry: string;
+  strike: number;
+  contracts: number;
+  price: number;
+}
+
+type Trade =
+  | DepositTrade
+  | WithdrawalTrade
+  | BuySpyTrade
+  | SellSpyTrade
+  | SellXspCallTrade
+  | BuyXspCallTrade;
+
+interface AppSettings {
+  finnhubApiKey: string;
+  whitepaperUrl: string;
+  spyPrice: number;
+  xspPrice: number;
+  vix: number;
+  ma50: number;
+  ma200: number;
+  trendSuppressionScore: number;
+  marginRate: number;
+  optionMarks: Record<string, number>;
+}
+
+interface TradeFormState {
+  date: string;
+  type: TradeType;
+  amount: string;
+  shares: string;
+  price: string;
+  contracts: string;
+  expiry: string;
+  strike: string;
+  notes: string;
+}
+
+interface OpenShortCallPosition {
+  key: string;
+  expiry: string;
+  strike: number;
+  quantity: number;
+  avgOpenPremium: number;
+  currentMark: number;
+  marketValue: number;
+  unrealizedPnl: number;
+}
+
+interface LedgerSnapshot {
+  cash: number;
+  marginDebt: number;
+  spyShares: number;
+  spyAvgCost: number;
+  spyMarketValue: number;
+  spyRealizedPnl: number;
+  spyUnrealizedPnl: number;
+  shortCalls: OpenShortCallPosition[];
+  optionMarketValue: number;
+  optionRealizedPnl: number;
+  optionUnrealizedPnl: number;
+  deposits: number;
+  withdrawals: number;
+  netContributions: number;
+  netLiquidationValue: number;
+  totalRealizedPnl: number;
+  totalUnrealizedPnl: number;
+  totalPnl: number;
+}
+
+const STORAGE_KEYS = {
+  activeTab: "apex.activeTab.v16",
+  settings: "apex.settings.v16",
+  trades: "apex.trades.v16",
+} as const;
+
+const BRAND = {
+  navy: "#0D1B2A",
+  gold: "#C9A84C",
+  deepBlue: "#1A3A5C",
+  slate: "#344054",
+  mist: "#EEF1F6",
+  sand: "#F0EBD8",
+  white: "#FFFFFF",
+  green: "#067647",
+  red: "#B42318",
+};
+
+const TAB_LABELS: Record<Tab, string> = {
+  dailyBrief: "Daily Brief",
+  actionItems: "Action Items",
+  positions: "Positions",
+  tradeLog: "Trade Log",
+  performance: "Performance",
+  fundProfile: "Fund Profile",
+  ruleSet: "Rule Set",
+  settings: "Settings",
+};
+
+const DEFAULT_SETTINGS: AppSettings = {
+  finnhubApiKey: "",
+  whitepaperUrl: "/APEX-Enhanced-SPY-Strategy-Whitepaper.pdf",
+  spyPrice: 0,
+  xspPrice: 0,
+  vix: 0,
+  ma50: 0,
+  ma200: 0,
+  trendSuppressionScore: 0.45,
+  marginRate: 4.25,
+  optionMarks: {},
+};
+
+const RULESET_SUMMARY = [
+  {
+    title: "R1 Regime Classification",
+    detail:
+      "Classify SPY versus MA50 / MA200 into R0, R1, R2, or R3. This sits at the top of the hierarchy and drives the full decision tree.",
+  },
+  {
+    title: "R2 Dynamic Leverage",
+    detail:
+      "Set target leverage by regime from 0.50x to 1.75x. Rebalance only when deviation from target is material, while treating margin as a real financing drag.",
+  },
+  {
+    title: "R3 Overwrite Sizing",
+    detail:
+      "Regime sets the overwrite band. Trend suppression compresses that band to 25%, 50%, or 100% of the eligible SPY share base.",
+  },
+  {
+    title: "R4 Blackout Rule",
+    detail:
+      "No new short calls inside the 3-calendar-day blackout around the second Wednesday and second Friday of each month.",
+  },
+  {
+    title: "R5 Monday Execution Protocol",
+    detail:
+      "Data pull, regime check, blackout check, rebalance check, early-roll check, then either sell new XSP calls or stand down.",
+  },
+  {
+    title: "R6 Weekly XSP Construction",
+    detail:
+      "Use XSP weeklies, target 7 DTE, Monday execution, delta range 0.10–0.40 with VIX-sensitive strike selection.",
+  },
+  {
+    title: "R7 Early Roll Rule",
+    detail:
+      "When captured premium reaches at least 70%, buy back the short call and re-open only if the rest of the framework still allows it.",
+  },
+  {
+    title: "R8 Midweek Rebound-Risk Roll",
+    detail:
+      "If price action creates rebound-risk conditions, roll the overwrite farther OTM rather than reducing overwrite size.",
+  },
+  {
+    title: "R9 Daily Monitor",
+    detail:
+      "The dashboard should output one clear state at a time: Hold, Rebalance, Buy Back Call, Sell New Call, Roll to 3% OTM, or No New Calls.",
+  },
+];
+
+function todayString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function displayDateString(): string {
+  return new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function parseNumber(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeWhitepaperUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "/APEX-Enhanced-SPY-Strategy-Whitepaper.pdf";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatSignedCurrency(value: number): string {
+  return `${value >= 0 ? "+" : "-"}${formatCurrency(Math.abs(value))}`;
+}
+
+function formatNumber(value: number, digits = 0): string {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function formatSignedPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const sign = value >= 0 ? "+" : "-";
+  return `${sign}${Math.abs(value * 100).toFixed(2)}%`;
+}
+
+function metricTone(value: number): string {
+  if (value > 0) return "text-green-700";
+  if (value < 0) return "text-red-700";
+  return "text-[#0D1B2A]";
+}
+
+function safeRead<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numberOrDefault(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function stringOrDefault(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function normalizeOptionMarks(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, raw]) => [key, numberOrDefault(raw, NaN)] as const)
+      .filter(([, mark]) => Number.isFinite(mark) && mark >= 0),
+  );
+}
+
+function normalizeSettings(value: unknown): AppSettings {
+  const source = isRecord(value) ? value : {};
+  return {
+    ...DEFAULT_SETTINGS,
+    finnhubApiKey: stringOrDefault(source.finnhubApiKey, DEFAULT_SETTINGS.finnhubApiKey),
+    whitepaperUrl: stringOrDefault(source.whitepaperUrl, DEFAULT_SETTINGS.whitepaperUrl),
+    spyPrice: numberOrDefault(source.spyPrice, DEFAULT_SETTINGS.spyPrice),
+    xspPrice: numberOrDefault(source.xspPrice, DEFAULT_SETTINGS.xspPrice),
+    vix: numberOrDefault(source.vix, DEFAULT_SETTINGS.vix),
+    ma50: numberOrDefault(source.ma50, DEFAULT_SETTINGS.ma50),
+    ma200: numberOrDefault(source.ma200, DEFAULT_SETTINGS.ma200),
+    trendSuppressionScore: numberOrDefault(
+      source.trendSuppressionScore,
+      DEFAULT_SETTINGS.trendSuppressionScore,
+    ),
+    marginRate: numberOrDefault(source.marginRate, DEFAULT_SETTINGS.marginRate),
+    optionMarks: normalizeOptionMarks(source.optionMarks),
+  };
+}
+
+function normalizeTrade(value: unknown): Trade | null {
+  if (!isRecord(value)) return null;
+  const type = value.type;
+  if (
+    type !== "deposit" &&
+    type !== "withdrawal" &&
+    type !== "buy_spy" &&
+    type !== "sell_spy" &&
+    type !== "sell_xsp_call" &&
+    type !== "buy_xsp_call"
+  ) {
+    return null;
+  }
+
+  const base: TradeBase = {
+    id: stringOrDefault(value.id, `${Date.now()}-${Math.random()}`),
+    createdAt: stringOrDefault(value.createdAt, new Date().toISOString()),
+    date: stringOrDefault(value.date, todayString()),
+    notes: stringOrDefault(value.notes, ""),
+  };
+
+  if (type === "deposit" || type === "withdrawal") {
+    const amount = numberOrDefault(value.amount, 0);
+    return amount > 0 ? { ...base, type, amount } : null;
+  }
+
+  if (type === "buy_spy" || type === "sell_spy") {
+    const shares = numberOrDefault(value.shares, 0);
+    const price = numberOrDefault(value.price, 0);
+    return shares > 0 && price > 0 ? { ...base, type, shares, price } : null;
+  }
+
+  const contracts = numberOrDefault(value.contracts, 0);
+  const price = numberOrDefault(value.price, 0);
+  const strike = numberOrDefault(value.strike, 0);
+  const expiry = stringOrDefault(value.expiry, "");
+  return contracts > 0 && price >= 0 && strike > 0 && expiry
+    ? { ...base, type, contracts, price, strike, expiry }
+    : null;
+}
+
+function normalizeTrades(value: unknown): Trade[] {
+  const rawTrades = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.trades)
+      ? value.trades
+      : [];
+  return rawTrades.map(normalizeTrade).filter((trade): trade is Trade => trade !== null);
+}
+
+function optionKey(expiry: string, strike: number): string {
+  return `XSP|${expiry}|${strike}`;
+}
+
+function optionLabel(expiry: string, strike: number): string {
+  return `XSP ${expiry} ${formatNumber(strike, 2)}C`;
+}
+
+function consumeCashOrBorrow(cash: number, marginDebt: number, amount: number) {
+  const normalized = Math.max(0, round2(amount));
+  if (normalized <= cash) {
+    return { cash: round2(cash - normalized), marginDebt };
+  }
+  return {
+    cash: 0,
+    marginDebt: round2(marginDebt + normalized - cash),
+  };
+}
+
+function receiveCash(
+  cash: number,
+  marginDebt: number,
+  amount: number,
+  payDownDebtFirst: boolean,
+) {
+  const normalized = Math.max(0, round2(amount));
+  if (!payDownDebtFirst || marginDebt <= 0) {
+    return { cash: round2(cash + normalized), marginDebt };
+  }
+  const debtPaydown = Math.min(marginDebt, normalized);
+  return {
+    cash: round2(cash + (normalized - debtPaydown)),
+    marginDebt: round2(marginDebt - debtPaydown),
+  };
+}
+
+function buildLedger(
+  trades: Trade[],
+  spyPrice: number,
+  optionMarks: Record<string, number>,
+): LedgerSnapshot {
+  const normalizedTrades = Array.isArray(trades) ? trades : [];
+  const sorted = [...normalizedTrades].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt),
+  );
+
+  let cash = 0;
+  let marginDebt = 0;
+  let spyShares = 0;
+  let spyAvgCost = 0;
+  let spyRealizedPnl = 0;
+  let optionRealizedPnl = 0;
+  let deposits = 0;
+  let withdrawals = 0;
+
+  const shortCallsByKey: Record<
+    string,
+    {
+      key: string;
+      expiry: string;
+      strike: number;
+      quantity: number;
+      avgOpenPremium: number;
+    }
+  > = {};
+
+  for (const trade of sorted) {
+    switch (trade.type) {
+      case "deposit": {
+        deposits = round2(deposits + trade.amount);
+        cash = round2(cash + trade.amount);
+        break;
+      }
+      case "withdrawal": {
+        withdrawals = round2(withdrawals + trade.amount);
+        ({ cash, marginDebt } = consumeCashOrBorrow(cash, marginDebt, trade.amount));
+        break;
+      }
+      case "buy_spy": {
+        const totalCost = round2(trade.shares * trade.price);
+        ({ cash, marginDebt } = consumeCashOrBorrow(cash, marginDebt, totalCost));
+        const newShares = round2(spyShares + trade.shares);
+        const newBasis = round2(spyShares * spyAvgCost + trade.shares * trade.price);
+        spyShares = newShares;
+        spyAvgCost = newShares > 0 ? round2(newBasis / newShares) : 0;
+        break;
+      }
+      case "sell_spy": {
+        const sharesToSell = Math.min(spyShares, trade.shares);
+        const proceeds = round2(sharesToSell * trade.price);
+        ({ cash, marginDebt } = receiveCash(cash, marginDebt, proceeds, true));
+        spyRealizedPnl = round2(
+          spyRealizedPnl + (trade.price - spyAvgCost) * sharesToSell,
+        );
+        spyShares = round2(spyShares - sharesToSell);
+        if (spyShares <= 0) {
+          spyShares = 0;
+          spyAvgCost = 0;
+        }
+        break;
+      }
+      case "sell_xsp_call": {
+        const key = optionKey(trade.expiry, trade.strike);
+        const premium = round2(trade.contracts * trade.price * 100);
+        cash = round2(cash + premium);
+        const existing = shortCallsByKey[key] ?? {
+          key,
+          expiry: trade.expiry,
+          strike: trade.strike,
+          quantity: 0,
+          avgOpenPremium: 0,
+        };
+        const newQty = round2(existing.quantity + trade.contracts);
+        const weightedOpenPremium =
+          existing.quantity * existing.avgOpenPremium + trade.contracts * trade.price;
+        shortCallsByKey[key] = {
+          ...existing,
+          quantity: newQty,
+          avgOpenPremium: newQty > 0 ? round2(weightedOpenPremium / newQty) : 0,
+        };
+        break;
+      }
+      case "buy_xsp_call": {
+        const key = optionKey(trade.expiry, trade.strike);
+        const closeCost = round2(trade.contracts * trade.price * 100);
+        ({ cash, marginDebt } = consumeCashOrBorrow(cash, marginDebt, closeCost));
+        const existing = shortCallsByKey[key] ?? {
+          key,
+          expiry: trade.expiry,
+          strike: trade.strike,
+          quantity: 0,
+          avgOpenPremium: 0,
+        };
+        const contractsClosed = Math.min(existing.quantity, trade.contracts);
+        optionRealizedPnl = round2(
+          optionRealizedPnl +
+            (existing.avgOpenPremium - trade.price) * contractsClosed * 100,
+        );
+        const newQty = round2(existing.quantity - contractsClosed);
+        shortCallsByKey[key] = {
+          ...existing,
+          quantity: newQty > 0 ? newQty : 0,
+          avgOpenPremium: newQty > 0 ? existing.avgOpenPremium : 0,
+        };
+        break;
+      }
+    }
+  }
+
+  const normalizedSpyPrice = Math.max(0, round2(spyPrice));
+  const spyMarketValue = round2(spyShares * normalizedSpyPrice);
+  const spyUnrealizedPnl = round2((normalizedSpyPrice - spyAvgCost) * spyShares);
+
+  const shortCalls = Object.values(shortCallsByKey)
+    .filter((position) => position.quantity > 0)
+    .sort(
+      (a, b) => a.expiry.localeCompare(b.expiry) || a.strike - b.strike,
+    )
+    .map((position) => {
+      const mark = optionMarks[position.key] ?? position.avgOpenPremium;
+      const currentMark = round2(Math.max(0, mark));
+      const marketValue = round2(-position.quantity * currentMark * 100);
+      const unrealizedPnl = round2(
+        (position.avgOpenPremium - currentMark) * position.quantity * 100,
+      );
+      return { ...position, currentMark, marketValue, unrealizedPnl };
+    });
+
+  const optionMarketValue = round2(
+    shortCalls.reduce((sum, position) => sum + position.marketValue, 0),
+  );
+  const optionUnrealizedPnl = round2(
+    shortCalls.reduce((sum, position) => sum + position.unrealizedPnl, 0),
+  );
+  const netContributions = round2(deposits - withdrawals);
+  const netLiquidationValue = round2(cash + spyMarketValue + optionMarketValue - marginDebt);
+  const totalRealizedPnl = round2(spyRealizedPnl + optionRealizedPnl);
+  const totalUnrealizedPnl = round2(spyUnrealizedPnl + optionUnrealizedPnl);
+  const totalPnl = round2(netLiquidationValue - netContributions);
+
+  return {
+    cash: round2(cash),
+    marginDebt: round2(marginDebt),
+    spyShares: round2(spyShares),
+    spyAvgCost: round2(spyAvgCost),
+    spyMarketValue,
+    spyRealizedPnl,
+    spyUnrealizedPnl,
+    shortCalls,
+    optionMarketValue,
+    optionRealizedPnl,
+    optionUnrealizedPnl,
+    deposits,
+    withdrawals,
+    netContributions,
+    netLiquidationValue,
+    totalRealizedPnl,
+    totalUnrealizedPnl,
+    totalPnl,
+  };
+}
+
+function getRegime(spot: number, ma50: number, ma200: number): Regime {
+  if (spot <= 0 || ma50 <= 0 || ma200 <= 0) return "R1";
+  if (spot < ma50 && spot < ma200) return "R0";
+  if (spot < ma50 && spot >= ma200) return "R1";
+  if (spot >= ma50 && spot < ma200) return "R2";
+  return "R3";
+}
+
+function targetLeverageForRegime(regime: Regime): number {
+  if (regime === "R0") return 0.5;
+  if (regime === "R3") return 1.75;
+  return 1.25;
+}
+
+function overwritePercentFromTrend(score: number): number {
+  if (score > 0.7) return 0.25;
+  if (score >= 0.5) return 0.5;
+  return 1;
+}
+
+function targetDeltaForRegime(regime: Regime, vix: number): number {
+  const base: Record<Regime, number> = { R0: 0.15, R1: 0.2, R2: 0.25, R3: 0.3 };
+  const lowVol: Record<Regime, number> = { R0: 0.2, R1: 0.25, R2: 0.3, R3: 0.35 };
+  const highVol: Record<Regime, number> = { R0: 0.1, R1: 0.15, R2: 0.2, R3: 0.25 };
+  if (vix < 16) return lowVol[regime];
+  if (vix > 25) return highVol[regime];
+  return base[regime];
+}
+
+function isSecondWeekdayOfMonth(date: Date, weekday: number, ordinal: number): boolean {
+  const probe = new Date(date.getFullYear(), date.getMonth(), 1);
+  let count = 0;
+  while (probe.getMonth() === date.getMonth()) {
+    if (probe.getDay() === weekday) {
+      count += 1;
+      if (count === ordinal) {
+        return probe.getDate() === date.getDate();
+      }
+    }
+    probe.setDate(probe.getDate() + 1);
+  }
+  return false;
+}
+
+function daysUntilNextSecondWeekday(targetWeekday: number): number {
+  const today = new Date();
+  for (let index = 0; index < 40; index += 1) {
+    const probe = new Date(today);
+    probe.setDate(today.getDate() + index);
+    if (isSecondWeekdayOfMonth(probe, targetWeekday, 2)) return index;
+  }
+  return 999;
+}
+
+function macroBlackout(): boolean {
+  return daysUntilNextSecondWeekday(3) <= 3 || daysUntilNextSecondWeekday(5) <= 3;
+}
+
+function makeEmptyForm(): TradeFormState {
+  return {
+    date: todayString(),
+    type: "deposit",
+    amount: "",
+    shares: "",
+    price: "",
+    contracts: "",
+    expiry: "",
+    strike: "",
+    notes: "",
+  };
+}
+
+function describeTrade(trade: Trade): string {
+  switch (trade.type) {
+    case "deposit":
+      return "External deposit";
+    case "withdrawal":
+      return "External withdrawal";
+    case "buy_spy":
+      return `Buy ${formatNumber(trade.shares)} SPY @ ${formatCurrency(trade.price)}`;
+    case "sell_spy":
+      return `Sell ${formatNumber(trade.shares)} SPY @ ${formatCurrency(trade.price)}`;
+    case "sell_xsp_call":
+      return `Sell ${formatNumber(trade.contracts)} ${optionLabel(trade.expiry, trade.strike)} @ ${formatCurrency(trade.price)}`;
+    case "buy_xsp_call":
+      return `Buy back ${formatNumber(trade.contracts)} ${optionLabel(trade.expiry, trade.strike)} @ ${formatCurrency(trade.price)}`;
+  }
+}
+
+function tradeCashImpact(trade: Trade): number {
+  switch (trade.type) {
+    case "deposit":
+      return trade.amount;
+    case "withdrawal":
+      return -trade.amount;
+    case "buy_spy":
+      return -trade.shares * trade.price;
+    case "sell_spy":
+      return trade.shares * trade.price;
+    case "sell_xsp_call":
+      return trade.contracts * trade.price * 100;
+    case "buy_xsp_call":
+      return -trade.contracts * trade.price * 100;
+  }
+}
+
+function buildTradeFromForm(form: TradeFormState): Trade | null {
+  const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}`;
+
+  const base: TradeBase = {
+    id,
+    createdAt: new Date().toISOString(),
+    date: form.date || todayString(),
+    notes: form.notes.trim(),
+  };
+
+  if (form.type === "deposit" || form.type === "withdrawal") {
+    const amount = round2(parseNumber(form.amount));
+    if (amount <= 0) return null;
+    return { ...base, type: form.type, amount };
+  }
+
+  if (form.type === "buy_spy" || form.type === "sell_spy") {
+    const shares = round2(parseNumber(form.shares));
+    const price = round2(parseNumber(form.price));
+    if (shares <= 0 || price <= 0) return null;
+    return { ...base, type: form.type, shares, price };
+  }
+
+  const contracts = round2(parseNumber(form.contracts));
+  const price = round2(parseNumber(form.price));
+  const strike = round2(parseNumber(form.strike));
+  const expiry = form.expiry;
+  if (contracts <= 0 || price < 0 || strike <= 0 || !expiry) return null;
+  return {
+    ...base,
+    type: form.type,
+    contracts,
+    price,
+    strike,
+    expiry,
+  } as Trade;
+}
+
+function MetricCard({
+  label,
+  value,
+  tone = "text-[#0D1B2A]",
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <div className="border bg-white p-3 shadow-sm" style={{ borderColor: BRAND.sand }}>
+      <div
+        className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+        style={{ color: BRAND.gold }}
+      >
+        {label}
+      </div>
+      <div className={`mt-2 text-[1.45rem] font-semibold tracking-tight ${tone}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border bg-white p-4 shadow-sm" style={{ borderColor: BRAND.sand }}>
+      <div className="mb-3">
+        <h2 className="text-lg font-semibold" style={{ color: BRAND.navy }}>
+          {title}
+        </h2>
+        {subtitle ? (
+          <p className="mt-1 text-xs" style={{ color: BRAND.slate }}>
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function DataPoint({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b py-2 text-sm last:border-b-0" style={{ borderColor: BRAND.sand }}>
+      <span style={{ color: BRAND.slate }}>{label}</span>
+      <span className="font-semibold text-right" style={{ color: BRAND.navy }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function Pill({ text, tone }: { text: string; tone: "gold" | "green" | "red" | "navy" }) {
+  const styleMap = {
+    gold: { backgroundColor: "#FFF7E1", color: BRAND.gold, borderColor: "#E6D39A" },
+    green: { backgroundColor: "#ECFDF3", color: BRAND.green, borderColor: "#ABEFC6" },
+    red: { backgroundColor: "#FEF3F2", color: BRAND.red, borderColor: "#FECDCA" },
+    navy: { backgroundColor: "#F2F4F7", color: BRAND.navy, borderColor: "#D0D5DD" },
+  } as const;
+
+  return (
+    <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold" style={styleMap[tone]}>
+      {text}
+    </span>
+  );
+}
+
+function TextInput({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  step,
+  placeholder,
+}: {
+  label: string;
+  name: string;
+  value: string | number;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  type?: string;
+  step?: string;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm" style={{ color: BRAND.slate }}>
+        {label}
+      </label>
+      <input
+        name={name}
+        type={type}
+        step={step}
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+        className="w-full border bg-white px-3 py-2"
+        style={{ borderColor: BRAND.sand }}
+      />
+    </div>
+  );
+}
+
+export default function HomePage() {
+  const [isReady, setIsReady] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("dailyBrief");
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [tradeForm, setTradeForm] = useState<TradeFormState>(makeEmptyForm());
+  const [isFetchingMarketData, setIsFetchingMarketData] = useState(false);
+  const [fetchMessage, setFetchMessage] = useState("");
+  const [tradeMessage, setTradeMessage] = useState("");
+
+  useEffect(() => {
+    const savedTab = safeRead<unknown>(STORAGE_KEYS.activeTab, null);
+    const savedSettings = safeRead<unknown>(STORAGE_KEYS.settings, {});
+    const savedTrades = safeRead<unknown>(STORAGE_KEYS.trades, []);
+    if (typeof savedTab === "string" && savedTab in TAB_LABELS) {
+      setActiveTab(savedTab as Tab);
+    }
+    setSettings(normalizeSettings(savedSettings));
+    setTrades(normalizeTrades(savedTrades));
+    setIsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (isReady) {
+      window.localStorage.setItem(STORAGE_KEYS.activeTab, JSON.stringify(activeTab));
+    }
+  }, [activeTab, isReady]);
+
+  useEffect(() => {
+    if (isReady) {
+      window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+    }
+  }, [settings, isReady]);
+
+  useEffect(() => {
+    if (isReady) {
+      window.localStorage.setItem(STORAGE_KEYS.trades, JSON.stringify(trades));
+    }
+  }, [trades, isReady]);
+
+  const ledger = useMemo(
+    () => buildLedger(trades, settings.spyPrice, settings.optionMarks),
+    [trades, settings.spyPrice, settings.optionMarks],
+  );
+
+  const regime = useMemo(
+    () => getRegime(settings.spyPrice, settings.ma50, settings.ma200),
+    [settings.spyPrice, settings.ma50, settings.ma200],
+  );
+
+  const targetLev = targetLeverageForRegime(regime);
+  const overwritePct = overwritePercentFromTrend(settings.trendSuppressionScore);
+  const targetDeltaValue = targetDeltaForRegime(regime, settings.vix);
+  const blackout = macroBlackout();
+  const currentLeverage = useMemo(
+    () => (ledger.netLiquidationValue <= 0 ? 0 : ledger.spyMarketValue / ledger.netLiquidationValue),
+    [ledger.netLiquidationValue, ledger.spyMarketValue],
+  );
+  const targetSpyMarketValue = round2(targetLev * ledger.netLiquidationValue);
+  const spyValueDiff = round2(targetSpyMarketValue - ledger.spyMarketValue);
+  const targetAdditionalShares = settings.spyPrice > 0 ? round2(spyValueDiff / settings.spyPrice) : 0;
+  const targetContracts = Math.floor((ledger.spyShares * overwritePct) / 100);
+  const currentShortContracts = ledger.shortCalls.reduce((sum, position) => sum + position.quantity, 0);
+  const callContractDelta = targetContracts - currentShortContracts;
+  const annualFinancingCost = round2(ledger.marginDebt * (settings.marginRate / 100));
+  const dailyFinancingCost = round2(annualFinancingCost / 365);
+  const performanceReturn =
+    ledger.netContributions > 0 ? ledger.totalPnl / ledger.netContributions : null;
+
+  const earlyRollCandidates = useMemo(() => {
+    return ledger.shortCalls
+      .map((position) => {
+        const premiumCapture =
+          position.avgOpenPremium > 0
+            ? (position.avgOpenPremium - position.currentMark) / position.avgOpenPremium
+            : null;
+        return { ...position, premiumCapture };
+      })
+      .filter((position) => position.premiumCapture !== null && position.premiumCapture >= 0.7);
+  }, [ledger.shortCalls]);
+
+  const primaryAction = useMemo(() => {
+    if (blackout) return "No New Calls";
+    if (earlyRollCandidates.length > 0) return "Buy Back Call";
+    if (Math.abs(currentLeverage - targetLev) >= 0.03) return "Rebalance";
+    if (callContractDelta > 0) return "Sell New Call";
+    return "Hold";
+  }, [blackout, callContractDelta, currentLeverage, earlyRollCandidates.length, targetLev]);
+
+  async function fetchFinnhubData() {
+    setIsFetchingMarketData(true);
+    setFetchMessage("Fetching market data from the server feed...");
+
+    try {
+      const token = settings.finnhubApiKey.trim();
+      const url = token ? `/api/market?token=${encodeURIComponent(token)}` : "/api/market";
+      const response = await fetch(url, { cache: "no-store" });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        spyPrice?: number | null;
+        xspPrice?: number | null;
+        vix?: number | null;
+        ma50?: number | null;
+        ma200?: number | null;
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || `Market-data request failed (${response.status}).`);
+      }
+
+      setSettings((current) => ({
+        ...current,
+        spyPrice: round2(payload.spyPrice ?? current.spyPrice),
+        xspPrice: round2(payload.xspPrice ?? current.xspPrice),
+        vix: round2(payload.vix ?? current.vix),
+        ma50: round2(payload.ma50 ?? current.ma50),
+        ma200: round2(payload.ma200 ?? current.ma200),
+      }));
+
+      setFetchMessage(
+        payload.message ||
+          "Updated market fields from the server feed. Kept any field that the feed did not return.",
+      );
+    } catch (error) {
+      setFetchMessage(error instanceof Error ? error.message : "Failed to fetch market data.");
+    } finally {
+      setIsFetchingMarketData(false);
+    }
+  }
+
+  function handleSettingsChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const { name, value } = event.target;
+    setSettings((current) => ({
+      ...current,
+      [name]: name === "finnhubApiKey" || name === "whitepaperUrl" ? value : round2(parseNumber(value)),
+    }));
+  }
+
+  function handleTradeFieldChange(
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) {
+    const { name, value } = event.target;
+    setTradeForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function handleOptionMarkChange(optionPositionKey: string, value: string) {
+    const numericValue = round2(parseNumber(value));
+    setSettings((current) => ({
+      ...current,
+      optionMarks: {
+        ...current.optionMarks,
+        [optionPositionKey]: numericValue,
+      },
+    }));
+  }
+
+  function handleSubmitTrade(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trade = buildTradeFromForm(tradeForm);
+    if (!trade) {
+      setTradeMessage("Enter all required trade fields with positive values.");
+      return;
+    }
+
+    if (trade.type === "sell_spy" && trade.shares > ledger.spyShares) {
+      setTradeMessage("Sell SPY trade exceeds current SPY shares.");
+      return;
+    }
+
+    if (trade.type === "buy_xsp_call") {
+      const key = optionKey(trade.expiry, trade.strike);
+      const openQty = ledger.shortCalls.find((position) => position.key === key)?.quantity ?? 0;
+      if (trade.contracts > openQty) {
+        setTradeMessage("Buy-back contracts exceed currently open short-call quantity for that line.");
+        return;
+      }
+    }
+
+    setTrades((current) => [...current, trade]);
+    setTradeForm((current) => ({ ...makeEmptyForm(), date: current.date }));
+    setTradeMessage(`Added: ${describeTrade(trade)}`);
+  }
+
+  function deleteTrade(id: string) {
+    setTrades((current) => current.filter((trade) => trade.id !== id));
+  }
+
+  function renderTradeInputs() {
+    if (tradeForm.type === "deposit" || tradeForm.type === "withdrawal") {
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextInput
+            label="Amount"
+            name="amount"
+            value={tradeForm.amount}
+            onChange={handleTradeFieldChange as (event: React.ChangeEvent<HTMLInputElement>) => void}
+            type="number"
+            step="0.01"
+          />
+        </div>
+      );
+    }
+
+    if (tradeForm.type === "buy_spy" || tradeForm.type === "sell_spy") {
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextInput
+            label="Shares"
+            name="shares"
+            value={tradeForm.shares}
+            onChange={handleTradeFieldChange as (event: React.ChangeEvent<HTMLInputElement>) => void}
+            type="number"
+            step="0.01"
+          />
+          <TextInput
+            label="Price"
+            name="price"
+            value={tradeForm.price}
+            onChange={handleTradeFieldChange as (event: React.ChangeEvent<HTMLInputElement>) => void}
+            type="number"
+            step="0.01"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <TextInput
+          label="Contracts"
+          name="contracts"
+          value={tradeForm.contracts}
+          onChange={handleTradeFieldChange as (event: React.ChangeEvent<HTMLInputElement>) => void}
+          type="number"
+          step="1"
+        />
+        <TextInput
+          label="Premium"
+          name="price"
+          value={tradeForm.price}
+          onChange={handleTradeFieldChange as (event: React.ChangeEvent<HTMLInputElement>) => void}
+          type="number"
+          step="0.01"
+        />
+        <TextInput
+          label="Strike"
+          name="strike"
+          value={tradeForm.strike}
+          onChange={handleTradeFieldChange as (event: React.ChangeEvent<HTMLInputElement>) => void}
+          type="number"
+          step="0.01"
+        />
+        <TextInput
+          label="Expiry"
+          name="expiry"
+          value={tradeForm.expiry}
+          onChange={handleTradeFieldChange as (event: React.ChangeEvent<HTMLInputElement>) => void}
+          type="date"
+        />
+      </div>
+    );
+  }
+
+  function renderDailyBrief() {
+    return (
+      <div className="grid gap-4">
+        <div className="grid gap-4 lg:grid-cols-4">
+          <MetricCard label="Regime" value={regime} />
+          <MetricCard label="Target Leverage" value={`${targetLev.toFixed(2)}x`} />
+          <MetricCard label="Current Leverage" value={`${currentLeverage.toFixed(2)}x`} />
+          <MetricCard
+            label="Primary Action"
+            value={primaryAction}
+            tone={
+              primaryAction === "Hold"
+                ? "text-[#0D1B2A]"
+                : primaryAction === "No New Calls"
+                  ? "text-red-700"
+                  : "text-green-700"
+            }
+          />
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <SectionCard
+            title="Executive readout"
+            subtitle="Current state of the book, leverage gap, overwrite gap, and financing drag."
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <MetricCard
+                label="Leverage Gap"
+                value={`${currentLeverage >= targetLev ? "+" : ""}${(currentLeverage - targetLev).toFixed(2)}x`}
+                tone={metricTone(currentLeverage - targetLev)}
+              />
+              <MetricCard
+                label="Target SPY Delta"
+                value={`${targetAdditionalShares >= 0 ? "+" : ""}${formatNumber(targetAdditionalShares, 2)} shares`}
+                tone={metricTone(targetAdditionalShares)}
+              />
+              <MetricCard
+                label="Overwrite Gap"
+                value={`${callContractDelta >= 0 ? "+" : ""}${formatNumber(callContractDelta)} contracts`}
+                tone={metricTone(callContractDelta)}
+              />
+              <MetricCard
+                label="Daily Financing Drag"
+                value={formatCurrency(dailyFinancingCost)}
+              />
+            </div>
+            <div className="mt-4 border-t pt-2" style={{ borderColor: BRAND.sand }}>
+              <DataPoint label="Blackout status" value={blackout ? <Pill text="Active" tone="red" /> : <Pill text="Clear" tone="green" />} />
+              <DataPoint label="Target overwrite" value={`${formatNumber(overwritePct * 100)}% of SPY shares`} />
+              <DataPoint label="Current short calls" value={`${formatNumber(currentShortContracts)} contracts`} />
+              <DataPoint label="Target delta band" value={targetDeltaValue.toFixed(2)} />
+              <DataPoint label="Annual financing drag" value={formatCurrency(annualFinancingCost)} />
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Immediate commentary" subtitle="Single-page PM summary.">
+            <div className="space-y-3 text-sm leading-7" style={{ color: BRAND.slate }}>
+              <p>
+                The dashboard now routes content by the selected tab again. The current rules engine
+                reads <span className="font-semibold" style={{ color: BRAND.navy }}>{regime}</span>,
+                with <span className="font-semibold" style={{ color: BRAND.navy }}>{targetLev.toFixed(2)}x</span> target leverage and
+                <span className="font-semibold" style={{ color: BRAND.navy }}> {formatNumber(overwritePct * 100)}%</span> overwrite sizing.
+              </p>
+              <p>
+                Current SPY market value is <span className="font-semibold" style={{ color: BRAND.navy }}>{formatCurrency(ledger.spyMarketValue)}</span>
+                against net liq of <span className="font-semibold" style={{ color: BRAND.navy }}>{formatCurrency(ledger.netLiquidationValue)}</span>.
+                Margin debt sits at <span className="font-semibold" style={{ color: BRAND.navy }}>{formatCurrency(ledger.marginDebt)}</span>.
+              </p>
+              <p>
+                {primaryAction === "Hold"
+                  ? "No forced change is showing right now."
+                  : `Highest-priority dashboard action is ${primaryAction}.`}
+              </p>
+            </div>
+          </SectionCard>
+        </div>
+      </div>
+    );
+  }
+
+  function renderActionItems() {
+    const items = [
+      blackout
+        ? "Blackout is active. Do not open new weekly calls until the blackout window clears."
+        : null,
+      Math.abs(currentLeverage - targetLev) >= 0.03
+        ? `Rebalance SPY exposure toward ${targetLev.toFixed(2)}x target leverage. Current gap is ${(currentLeverage - targetLev).toFixed(2)}x.`
+        : null,
+      callContractDelta > 0 && !blackout
+        ? `Sell ${formatNumber(callContractDelta)} additional XSP call contract${Math.abs(callContractDelta) === 1 ? "" : "s"} to reach overwrite target.`
+        : null,
+      callContractDelta < 0
+        ? `Overwrite is above target by ${formatNumber(Math.abs(callContractDelta))} contract${Math.abs(callContractDelta) === 1 ? "" : "s"}.`
+        : null,
+      earlyRollCandidates.length > 0
+        ? `Early-roll candidates flagged on ${earlyRollCandidates.length} open line${earlyRollCandidates.length === 1 ? "" : "s"} with premium capture above 70%.`
+        : null,
+      ledger.marginDebt > 0
+        ? `Margin debt is incurring about ${formatCurrency(dailyFinancingCost)} per day in financing cost.`
+        : null,
+      trades.length === 0 ? "No trades logged yet. Seed the ledger with deposits and holdings first." : null,
+    ].filter(Boolean) as string[];
+
+    return (
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <SectionCard title="Priority queue" subtitle="Action list derived from the current ledger and rules state.">
+          <div className="space-y-3">
+            {items.length ? (
+              items.map((item, index) => (
+                <div key={`${item}-${index}`} className="flex gap-3 border-b pb-3 text-sm last:border-b-0 last:pb-0" style={{ borderColor: BRAND.sand, color: BRAND.slate }}>
+                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold" style={{ borderColor: BRAND.gold, color: BRAND.gold }}>
+                    {index + 1}
+                  </div>
+                  <div>{item}</div>
+                </div>
+              ))
+            ) : (
+              <div className="text-sm" style={{ color: BRAND.slate }}>
+                No active items. Current state is hold.
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Roll watchlist" subtitle="Short-call lines with captured premium already in the target zone.">
+          {earlyRollCandidates.length ? (
+            <div className="space-y-3">
+              {earlyRollCandidates.map((position) => (
+                <div key={position.key} className="border p-3" style={{ borderColor: BRAND.sand }}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-semibold" style={{ color: BRAND.navy }}>
+                      {optionLabel(position.expiry, position.strike)}
+                    </div>
+                    <Pill text={`${((position.premiumCapture ?? 0) * 100).toFixed(1)}% captured`} tone="green" />
+                  </div>
+                  <div className="mt-2 text-sm" style={{ color: BRAND.slate }}>
+                    Qty {formatNumber(position.quantity)} · Open {formatCurrency(position.avgOpenPremium)} · Current {formatCurrency(position.currentMark)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm" style={{ color: BRAND.slate }}>
+              No short-call line currently meets the 70% premium-capture trigger.
+            </div>
+          )}
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderPositions() {
+    return (
+      <div className="grid gap-4">
+        <div className="grid gap-4 lg:grid-cols-4">
+          <MetricCard label="Cash" value={formatCurrency(ledger.cash)} />
+          <MetricCard label="Margin Debt" value={formatCurrency(ledger.marginDebt)} tone={ledger.marginDebt > 0 ? "text-red-700" : "text-[#0D1B2A]"} />
+          <MetricCard label="SPY Market Value" value={formatCurrency(ledger.spyMarketValue)} />
+          <MetricCard label="Short Calls MV" value={formatCurrency(ledger.optionMarketValue)} tone={metricTone(ledger.optionMarketValue)} />
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <SectionCard title="Core SPY book" subtitle="Broker-style ledger view for the share book.">
+            <DataPoint label="SPY shares" value={formatNumber(ledger.spyShares, 2)} />
+            <DataPoint label="Average cost" value={formatCurrency(ledger.spyAvgCost)} />
+            <DataPoint label="Spot" value={formatCurrency(settings.spyPrice)} />
+            <DataPoint label="Unrealized P&L" value={<span className={metricTone(ledger.spyUnrealizedPnl)}>{formatSignedCurrency(ledger.spyUnrealizedPnl)}</span>} />
+            <DataPoint label="Realized P&L" value={<span className={metricTone(ledger.spyRealizedPnl)}>{formatSignedCurrency(ledger.spyRealizedPnl)}</span>} />
+          </SectionCard>
+
+          <SectionCard title="Open XSP overwrite" subtitle="Editable current marks feed the open option liability and unrealized P&L.">
+            {ledger.shortCalls.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left" style={{ borderColor: BRAND.sand, color: BRAND.slate }}>
+                      <th className="px-2 py-2">Line</th>
+                      <th className="px-2 py-2">Qty</th>
+                      <th className="px-2 py-2">Open</th>
+                      <th className="px-2 py-2">Current Mark</th>
+                      <th className="px-2 py-2">Market Value</th>
+                      <th className="px-2 py-2">Unrealized</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledger.shortCalls.map((position) => (
+                      <tr key={position.key} className="border-b" style={{ borderColor: BRAND.sand }}>
+                        <td className="px-2 py-3 font-medium" style={{ color: BRAND.navy }}>
+                          {optionLabel(position.expiry, position.strike)}
+                        </td>
+                        <td className="px-2 py-3">{formatNumber(position.quantity)}</td>
+                        <td className="px-2 py-3">{formatCurrency(position.avgOpenPremium)}</td>
+                        <td className="px-2 py-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={settings.optionMarks[position.key] ?? position.currentMark}
+                            onChange={(event) => handleOptionMarkChange(position.key, event.target.value)}
+                            className="w-24 border px-2 py-1"
+                            style={{ borderColor: BRAND.sand }}
+                          />
+                        </td>
+                        <td className="px-2 py-3">{formatCurrency(position.marketValue)}</td>
+                        <td className={`px-2 py-3 font-semibold ${metricTone(position.unrealizedPnl)}`}>
+                          {formatSignedCurrency(position.unrealizedPnl)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-sm" style={{ color: BRAND.slate }}>
+                No open short-call positions logged.
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      </div>
+    );
+  }
+
+  function renderTradeLog() {
+    const sortedTrades = [...trades].sort(
+      (a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt),
+    );
+
+    return (
+      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionCard title="Enter trade" subtitle="Adds external cash flows, SPY share trades, and XSP overwrite trades to the ledger.">
+          <form className="space-y-4" onSubmit={handleSubmitTrade}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <TextInput
+                label="Trade Date"
+                name="date"
+                value={tradeForm.date}
+                onChange={handleTradeFieldChange as (event: React.ChangeEvent<HTMLInputElement>) => void}
+                type="date"
+              />
+              <div>
+                <label className="mb-2 block text-sm" style={{ color: BRAND.slate }}>
+                  Trade Type
+                </label>
+                <select
+                  name="type"
+                  value={tradeForm.type}
+                  onChange={handleTradeFieldChange}
+                  className="w-full border bg-white px-3 py-2"
+                  style={{ borderColor: BRAND.sand }}
+                >
+                  <option value="deposit">Deposit</option>
+                  <option value="withdrawal">Withdrawal</option>
+                  <option value="buy_spy">Buy SPY</option>
+                  <option value="sell_spy">Sell SPY</option>
+                  <option value="sell_xsp_call">Sell XSP Call</option>
+                  <option value="buy_xsp_call">Buy Back XSP Call</option>
+                </select>
+              </div>
+            </div>
+
+            {renderTradeInputs()}
+
+            <div>
+              <label className="mb-2 block text-sm" style={{ color: BRAND.slate }}>
+                Notes
+              </label>
+              <textarea
+                name="notes"
+                value={tradeForm.notes}
+                onChange={handleTradeFieldChange}
+                rows={3}
+                className="w-full border bg-white px-3 py-2"
+                style={{ borderColor: BRAND.sand }}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                className="px-4 py-2 font-semibold text-white"
+                style={{ backgroundColor: BRAND.gold }}
+              >
+                Add Trade
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTradeForm(makeEmptyForm());
+                  setTradeMessage("");
+                }}
+                className="border px-4 py-2 font-semibold"
+                style={{ borderColor: BRAND.sand, color: BRAND.navy }}
+              >
+                Reset Form
+              </button>
+            </div>
+
+            {tradeMessage ? (
+              <div className="text-sm" style={{ color: BRAND.slate }}>
+                {tradeMessage}
+              </div>
+            ) : null}
+          </form>
+        </SectionCard>
+
+        <SectionCard title="Trade history" subtitle="Newest trades first. Deleting a line recalculates the full ledger.">
+          {sortedTrades.length ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left" style={{ borderColor: BRAND.sand, color: BRAND.slate }}>
+                    <th className="px-2 py-2">Date</th>
+                    <th className="px-2 py-2">Description</th>
+                    <th className="px-2 py-2">Cash Impact</th>
+                    <th className="px-2 py-2">Notes</th>
+                    <th className="px-2 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedTrades.map((trade) => (
+                    <tr key={trade.id} className="border-b align-top" style={{ borderColor: BRAND.sand }}>
+                      <td className="px-2 py-3">{trade.date}</td>
+                      <td className="px-2 py-3 font-medium" style={{ color: BRAND.navy }}>
+                        {describeTrade(trade)}
+                      </td>
+                      <td className={`px-2 py-3 font-semibold ${metricTone(tradeCashImpact(trade))}`}>
+                        {formatSignedCurrency(tradeCashImpact(trade))}
+                      </td>
+                      <td className="px-2 py-3" style={{ color: BRAND.slate }}>
+                        {trade.notes || "—"}
+                      </td>
+                      <td className="px-2 py-3">
+                        <button
+                          type="button"
+                          onClick={() => deleteTrade(trade.id)}
+                          className="text-sm font-semibold"
+                          style={{ color: BRAND.red }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-sm" style={{ color: BRAND.slate }}>
+              No trades recorded yet.
+            </div>
+          )}
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderPerformance() {
+    return (
+      <div className="grid gap-4">
+        <div className="grid gap-4 lg:grid-cols-5">
+          <MetricCard label="Net Contributions" value={formatCurrency(ledger.netContributions)} />
+          <MetricCard label="Net Liq" value={formatCurrency(ledger.netLiquidationValue)} />
+          <MetricCard label="Total P&L" value={formatSignedCurrency(ledger.totalPnl)} tone={metricTone(ledger.totalPnl)} />
+          <MetricCard label="Realized P&L" value={formatSignedCurrency(ledger.totalRealizedPnl)} tone={metricTone(ledger.totalRealizedPnl)} />
+          <MetricCard label="Unrealized P&L" value={formatSignedCurrency(ledger.totalUnrealizedPnl)} tone={metricTone(ledger.totalUnrealizedPnl)} />
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <SectionCard title="Portfolio return framing" subtitle="Simple return view based on current P&L divided by net external contributions.">
+            <DataPoint label="Deposits" value={formatCurrency(ledger.deposits)} />
+            <DataPoint label="Withdrawals" value={formatCurrency(ledger.withdrawals)} />
+            <DataPoint label="Net contributions" value={formatCurrency(ledger.netContributions)} />
+            <DataPoint label="Performance vs contributions" value={<span className={performanceReturn !== null ? metricTone(performanceReturn) : ""}>{formatSignedPercent(performanceReturn)}</span>} />
+            <DataPoint label="Financing rate" value={`${settings.marginRate.toFixed(2)}%`} />
+          </SectionCard>
+
+          <SectionCard title="P&L composition" subtitle="Breaks out realized and unrealized components for the share book and overwrite sleeve.">
+            <div className="grid gap-3 md:grid-cols-2">
+              <MetricCard label="SPY Realized" value={formatSignedCurrency(ledger.spyRealizedPnl)} tone={metricTone(ledger.spyRealizedPnl)} />
+              <MetricCard label="SPY Unrealized" value={formatSignedCurrency(ledger.spyUnrealizedPnl)} tone={metricTone(ledger.spyUnrealizedPnl)} />
+              <MetricCard label="Option Realized" value={formatSignedCurrency(ledger.optionRealizedPnl)} tone={metricTone(ledger.optionRealizedPnl)} />
+              <MetricCard label="Option Unrealized" value={formatSignedCurrency(ledger.optionUnrealizedPnl)} tone={metricTone(ledger.optionUnrealizedPnl)} />
+            </div>
+          </SectionCard>
+        </div>
+      </div>
+    );
+  }
+
+  function renderFundProfile() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionCard title="Strategy profile" subtitle="High-level framing for the APEX Enhanced SPY strategy.">
+          <div className="space-y-4 text-sm leading-7" style={{ color: BRAND.slate }}>
+            <p>
+              APEX is an enhanced-index strategy that holds a core SPY position and writes XSP
+              covered calls to add option income on top of the underlying equity exposure.
+            </p>
+            <p>
+              The model stays broadly invested in the S&amp;P 500, then uses preset rules for
+              overwrite size, leverage, and market-regime guardrails to determine how much upside
+              to cap in exchange for premium. The goal is higher cash generation and more disciplined
+              risk control without turning the portfolio into a high-turnover trading strategy.
+            </p>
+            <div className="pt-1">
+              <a
+                href={normalizeWhitepaperUrl(settings.whitepaperUrl)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center border px-3 py-2 text-sm font-semibold"
+                style={{ borderColor: BRAND.gold, color: BRAND.navy, backgroundColor: "#FFF7E1" }}
+              >
+                Open Strategy PDF
+              </a>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Current operating parameters" subtitle="Snapshot of the live settings currently driving the model.">
+          <DataPoint label="SPY price" value={formatCurrency(settings.spyPrice)} />
+          <DataPoint label="XSP price" value={formatCurrency(settings.xspPrice)} />
+          <DataPoint label="VIX" value={formatNumber(settings.vix, 2)} />
+          <DataPoint label="MA50" value={formatCurrency(settings.ma50)} />
+          <DataPoint label="MA200" value={formatCurrency(settings.ma200)} />
+          <DataPoint label="Trend suppression" value={settings.trendSuppressionScore.toFixed(2)} />
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderRuleSet() {
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        {RULESET_SUMMARY.map((rule) => (
+          <SectionCard key={rule.title} title={rule.title}>
+            <div className="text-sm leading-7" style={{ color: BRAND.slate }}>
+              {rule.detail}
+            </div>
+          </SectionCard>
+        ))}
+      </div>
+    );
+  }
+
+  function renderSettings() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <SectionCard title="Settings" subtitle="Server-side Yahoo feed with optional Finnhub fallback plus manual override fields.">
+          <div className="space-y-3">
+            <TextInput
+              label="Finnhub API Key"
+              name="finnhubApiKey"
+              value={settings.finnhubApiKey}
+              onChange={handleSettingsChange}
+              type="password"
+            />
+
+            <TextInput
+              label="Strategy PDF URL"
+              name="whitepaperUrl"
+              value={settings.whitepaperUrl}
+              onChange={handleSettingsChange}
+              placeholder="/APEX-Enhanced-SPY-Strategy-Whitepaper.pdf"
+            />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <TextInput label="SPY Price" name="spyPrice" value={settings.spyPrice} onChange={handleSettingsChange} type="number" step="0.01" />
+              <TextInput label="XSP Price" name="xspPrice" value={settings.xspPrice} onChange={handleSettingsChange} type="number" step="0.01" />
+              <TextInput label="VIX" name="vix" value={settings.vix} onChange={handleSettingsChange} type="number" step="0.01" />
+              <TextInput label="MA50" name="ma50" value={settings.ma50} onChange={handleSettingsChange} type="number" step="0.01" />
+              <TextInput label="MA200" name="ma200" value={settings.ma200} onChange={handleSettingsChange} type="number" step="0.01" />
+              <TextInput label="Trend Suppression Score" name="trendSuppressionScore" value={settings.trendSuppressionScore} onChange={handleSettingsChange} type="number" step="0.01" />
+              <TextInput label="Margin Rate %" name="marginRate" value={settings.marginRate} onChange={handleSettingsChange} type="number" step="0.01" />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={fetchFinnhubData}
+                disabled={isFetchingMarketData}
+                className="px-4 py-2 font-semibold text-white disabled:opacity-60"
+                style={{ backgroundColor: BRAND.gold }}
+              >
+                {isFetchingMarketData ? "Fetching..." : "Fetch Market Data"}
+              </button>
+            </div>
+
+            {fetchMessage ? (
+              <div className="text-sm" style={{ color: BRAND.slate }}>
+                {fetchMessage}
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Current rules-engine state" subtitle="Live readout from the current settings and ledger.">
+          <DataPoint label="Regime" value={regime} />
+          <DataPoint label="Target leverage" value={`${targetLev.toFixed(2)}x`} />
+          <DataPoint label="Current leverage" value={`${currentLeverage.toFixed(2)}x`} />
+          <DataPoint label="Overwrite target" value={`${formatNumber(overwritePct * 100)}%`} />
+          <DataPoint label="Target delta" value={targetDeltaValue.toFixed(2)} />
+          <DataPoint label="Blackout active" value={blackout ? "Yes" : "No"} />
+          <DataPoint label="Tomorrow target contracts" value={formatNumber(targetContracts)} />
+        </SectionCard>
+      </div>
+    );
+  }
+
+  function renderActiveTab() {
+    switch (activeTab) {
+      case "dailyBrief":
+        return renderDailyBrief();
+      case "actionItems":
+        return renderActionItems();
+      case "positions":
+        return renderPositions();
+      case "tradeLog":
+        return renderTradeLog();
+      case "performance":
+        return renderPerformance();
+      case "fundProfile":
+        return renderFundProfile();
+      case "ruleSet":
+        return renderRuleSet();
+      case "settings":
+        return renderSettings();
+      default:
+        return renderDailyBrief();
+    }
+  }
+
+  return (
+    <main className="min-h-screen" style={{ backgroundColor: BRAND.mist, color: BRAND.navy }}>
+      <div className="mx-auto max-w-[1220px] px-3 py-3">
+        <header className="border bg-white shadow-sm" style={{ borderColor: BRAND.sand }}>
+          <div className="px-7 py-6" style={{ backgroundColor: BRAND.navy }}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-[3rem] font-bold leading-none tracking-[0.01em] text-white">
+                  TENACITY INVESTMENTS
+                </div>
+                <div className="mt-3 text-[1rem] italic leading-none" style={{ color: BRAND.gold }}>
+                  Portfolio Strategies
+                </div>
+              </div>
+              <div className="pt-1 text-right text-white">
+                <div className="text-[1.05rem]">{displayDateString()}</div>
+                <div className="mt-4 text-[1.05rem] font-semibold uppercase tracking-wide">
+                  PRIVATE &amp; CONFIDENTIAL
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-[3px]" style={{ backgroundColor: BRAND.gold }} />
+
+          <div className="grid gap-5 px-7 py-6 lg:grid-cols-[1fr_290px]">
+            <div>
+              <h1 className="text-[2.55rem] font-semibold tracking-tight" style={{ color: BRAND.navy }}>
+                APEX Enhanced SPY Strategy Dashboard
+              </h1>
+              <p className="mt-3 max-w-4xl text-[0.97rem] leading-8" style={{ color: BRAND.slate }}>
+                Broker-style ledger for the core SPY book and XSP overwrite sleeve. SPY buys
+                consume cash first and then create margin debt when needed. SPY sales pay down
+                margin debt first. XSP premiums raise cash and buybacks consume cash before borrowing.
+              </p>
+            </div>
+            <div className="flex items-start justify-center lg:justify-end">
+              <img
+                src="/Logo.png"
+                alt="Tenacity logo"
+                className="h-[180px] w-[280px] object-contain"
+              />
+            </div>
+          </div>
+
+          <div className="px-7 pb-5">
+            <div className="grid gap-3 md:grid-cols-2 lg:max-w-xl">
+              <MetricCard label="Net Liq" value={formatCurrency(ledger.netLiquidationValue)} />
+              <MetricCard
+                label="Total P&L"
+                value={formatSignedCurrency(ledger.totalPnl)}
+                tone={metricTone(ledger.totalPnl)}
+              />
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {(Object.keys(TAB_LABELS) as Tab[]).map((tab) => {
+                const active = tab === activeTab;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className="border px-4 py-2 text-[0.94rem]"
+                    style={{
+                      borderColor: BRAND.sand,
+                      backgroundColor: active ? BRAND.gold : BRAND.white,
+                      color: active ? BRAND.white : BRAND.navy,
+                    }}
+                  >
+                    {TAB_LABELS[tab]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </header>
+
+        <div className="mt-4">{renderActiveTab()}</div>
+
+        {!isReady ? (
+          <div className="mt-3 text-xs" style={{ color: BRAND.slate }}>
+            Loading saved local state...
+          </div>
+        ) : null}
+      </div>
+    </main>
+  );
+}

@@ -1,0 +1,2544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="APEX Dynamic SPY Strategy — Tenacity Investments, LLC"/>
+  <title>APEX | Tenacity Investments</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f5f0e8; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+const fontLink = document.createElement("link");
+fontLink.rel = "stylesheet";
+fontLink.href = "https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap";
+document.head.appendChild(fontLink);
+
+const APEX_LOGO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCABQAFADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD7CU4NLup/lH+9QYT/AHqAGOcHApWPAHtS+Sf71Mumht4JJ7ieOGKNS7u5CqqgZJJPAA9aAFzkEmkJry7xN8bPC+karaabavBctcvhZJ7nyA4x96NdrO68E79qpgZDGsTWP2hvD2meIho08GntMojeRTqghfZIgdSnmxrG+VYH/WCo9pG9rl8rtc9uj9T0pxNc14R8aeHPEoSPT78JdOm4Ws48uYj1Cnhx/tIWHvXTBSR96rTuSR7jtK9qeOnSjyj/AHqChCn5qBEtFFYfjXxXonhDR21PWrryo87IokUvLO/ZI0HLMfQdOpwOaANa+ureys5ry7njgt4I2kllkYKqIoyWJPQADOa+Fv2hP2jb7xbqU+k+ES1vokEhWKeRebgg8S7TwfVQ3A4ON2CrP2m/jT4j8Y2j6BsOgaO5BGmLOHurodnuSvCIOojHU8nIANfPNLRhsW01K9GpSalJcSz3cofzJpXLO5dSrEseScMav6lrkuraBaWWphJbrTkWGzucfvGt+f3Ln+JU4Kk8gZXkYxk26Qu+2afyV/veWX/Qc1Pqmn3GnTRpNsdJohNBLGcpNGejKe4yCD3BBBAIosguyzoPiLWtD2jTNQnhiVg4h3Zj3DuFPAP+0MH3r6m/Zr/aXv7vX7Twj4/mR4bthFZao7fMkp4WOUnqrHgOeQcBic5HybcWdxb20M08ZjWYsEVhgkLjJ+nzCug+GSaBN4lltPEcCvaXNjcQxTurMlnMU/d3DBedqEZJ7DntQ9FcFq7H6ng5FDDKkV8s/Bbxt8YdDtIbbxDd6f4wtYULPYhyNSa3X/ltaTAeVeKFG7aGL9jg19Pade22paZb6hZSiW2uYllhcAjcjDIPPsaE01dBY8v+Kvx78DeB7m60hb5dU12BSXsrckrAR/z2kAKxgZ5HLdgMkV8VfFb4v+KPGniKa/Gp3FvHho0aEmMhD/AgzlE9gcnqxJ6e4ftK/A/S9B8E+FLbwrZRQsLySPWtWlTM06+S0zTzv1ODE7Y6ZIAr5Nu2swzJZpI0eeJZvvsPoOF/Whq4XsQOzMzOxLMxyxJySfU0ldH4E8NXXiK5vBFJZQRQwiPz725S3gWaVvLiDO5AHVm9cIeK958Hfsj3Wt2n2if4k6E4Vtko0uE3axv3UvvUZ/CmI+bbDTtQ1ASGxs57sxjLrBGXYD12jnHviuk0i/8AFNh4UvLOXw1Ff6Jbv5srajpbOlq7kLlZDtKEkgYB5PavQtB0H4VeHtX8SSKniDxPN4atp5Z7m6lWyt45EkES4jiO+QGQgcyDjrWvrC/Hb45+DdPtdN8MQWXhC2mzbrGVtoZCOBI5kfdIE55UYznqaTs9GNaHn3j4aZefCTwdqdvbrZ3MVxc2ggViylCqSOV3EttVzwCTjzMDpWz+zj4c8Sr4w0zX7O2P2aV2SKFRme/C53Rxr2jJwHkOEABBPY9h4QXwf4l8Tr4Nt7HQr/wT4X0hI7nX7u2KXRuS/MsLdWEk7bREw2soPTivY/B3jf4SeEfhZqmoeHNUkvkt3S11S5it9tzAjsIw6xnpDEGBCJkADuSSZlG65SouzudRZfB3w+/haCbSZ4dL8Sx5nGp6W5WIXeS2TGp2OoY45AbaOCDXo3hGa9n8K6fLqdmlnftbr9qgQYVJsYcL/s7s49iK/Oa48c+KfAXiPVtF8M+O5tZ0cyMEuoZWWO5R13BxzlGG7kZ4IIr039nX49fEO8+InhzwjqupDVdO1G7W2mN0m+VMhvmV854AHBJFNK2gm7nfftx/FO90fSz8PdISFP7St/8AiZXD8usbdI0HYkD5mPYgDrXh/wAJf2dviB49EN/Naf8ACP6LJhvtt+hDuvrHFwzexO0e9eteCr7SfiZ+2pq9xrOmRm20W2mWyt7xNp82Fo41co3VvvMAenB7V9dgDHH51Qj4C8ZeE/h/pHjGz+GmpeI9US2066KyWOk6cXnnuGUEzXFxLtUyMuAqojKi8A8sx7zSdEf4HfFe21HwRqVsnw71HTYRq+o6pqUZi3bnyUKcmZRtKqqsTuI6HI9P/aQ+BNv4+I8V+GLj+yvGVmqtFOrlEu9n3FcjlXH8Mg6dDkdPhzx/c+MP+EhuNP8AGjagmrWxEc8V2u2QY6EgDBz/AHuc9cmlrcNCv4d8S634Y16bVdD1Nobp98ckoUOs6M2SGVgQQSAeRkHB4Ir6H+En7TGsxlrbxFdu80S7445sPBcqOqBsb4nxkg5dTjG0V8vGgEhgQSCDkEUNXBOx9XaV8RvgX4YPi+G38L3BXxMTJeW15NmN42BIjiKI21dzM2M5DHg4C14Q2rf8IJ4tvh4bvV1HRb+EPD56rJ5sL/MolU5BdTuRh3+bs1cU8rOiK5zsGFz2Hp9KbRbuFzQ1vUYdRnEkWk6Xp/qLKJ41f32s7AfQYFeufsTaVNqP7QGl3MaMYtOtLm6lI6AeX5a5/wCBSD8q8VijeWRIokaSR2CIiAlmYnAAA5JJ7V9//sh/CG6+HPhS41nX4gniHWVQzRd7SEcrET/eydze+B2piRt+L/gP4M8SfEl/Ht/feIItaMsMqNbXqxpG0SqqFRsyMbR39a9XDnHFI4y2QabtPqKBjzIOnauT+I3w78GeP7NbXxXoVtfmNcQz4KTw5/uSLhh9M49q6nafWpNmTuFAHz2f2RfhX1+1+Jx7f2gn/wAbo/4ZF+Ff/P54o/8ABgn/AMbr6E8sgdaNh9qQaHz2P2RfhWf+XzxR/wCDBP8A43Sj9kT4Vnj7Z4o/8GCf/G6+ghGwz0pyqw9KYHlfw1+A3w4+H2ppqmkaRLeanGcxXuozefJF/uDAVT7gZ969RRycjtTpEZiCMUixsPSgD//Z";
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const NAV0 = 3_200_000;
+const MARGIN_RATE = 0.045, TBILL_RATE = 0.045, IV_MULT = 1.10, CALL_DTE = 7;
+const REGIME_LEV    = [0.50, 1.25, 1.25, 1.75];
+const REGIME_DELTA  = [0.15, 0.20, 0.25, 0.30];
+const REGIME_BG     = ["#fdf0f0","#fdf4e7","#faf5dc","#eef7f0"];
+const REGIME_BORDER = ["#f0a0a0","#e8a870","#d4c060","#80c898"];
+const REGIME_TEXT   = ["#991b1b","#92400e","#7a5c14","#005c2e"];
+const REGIME_NAME   = ["R0 — BEAR","R1 — WEAK","R2 — MIXED","R3 — STRONG"];
+const REGIME_DESC   = ["0.50x · Δ0.15","1.25x · Δ0.20","1.25x · Δ0.25","1.75x · Δ0.30"];
+
+// ─── MATH ─────────────────────────────────────────────────────────────────────
+function erfApprox(x) {
+  const t = 1/(1+0.3275911*Math.abs(x));
+  const y = 1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+  return x>=0?y:-y;
+}
+const normCDF = x => 0.5*(1+erfApprox(x/Math.sqrt(2)));
+function bsCall(S,K,T,iv,r=0.05){
+  if(T<=0||iv<=0) return Math.max(0,S-K);
+  const d1=(Math.log(S/K)+(r+.5*iv*iv)*T)/(iv*Math.sqrt(T));
+  return S*normCDF(d1)-K*Math.exp(-r*T)*normCDF(d1-iv*Math.sqrt(T));
+}
+function bsDelta(S,K,T,iv,r=0.05){
+  if(T<=0||iv<=0) return 0.5;
+  const d1=(Math.log(S/K)+(r+.5*iv*iv)*T)/(iv*Math.sqrt(T));
+  return normCDF(d1);
+}
+function strikeForDelta(S,T,iv,tgt=0.25){
+  let lo=S*0.78,hi=S*1.22;
+  for(let i=0;i<60;i++){const m=(lo+hi)/2; bsDelta(S,m,T,iv)>tgt?lo=m:hi=m;}
+  return Math.round((lo+hi)/2*4)/4;
+}
+function applyVixAdj(delta,vix){
+  if(vix<16) return Math.min(delta+0.05,0.40);
+  if(vix>25) return Math.max(delta-0.05,0.10);
+  return delta;
+}
+function getRegime(spy,ma50,ma200){
+  if(spy>=ma50&&spy>=ma200) return 3;
+  if(spy>=ma50) return 2;
+  if(spy>=ma200) return 1;
+  return 0;
+}
+function calcTrend(spy,ma50,ma200,r5,r20,ma50s,ma200s){
+  let s=0;
+  if(spy>=ma200) s+=0.30; if(ma200s>0) s+=0.15; if(ma50s>0) s+=0.15;
+  if(ma200>0&&(spy-ma200)/ma200>0.05) s+=0.10;
+  if(r20>0.05) s+=0.15; if(r5>0.02) s+=0.10;
+  if(spy>ma50&&r5>0) s+=0.05;
+  return Math.min(s,1.0);
+}
+function owFromScore(ts){ return ts>0.70?0.25:ts>0.50?0.50:1.00; }
+function sma(arr,n){ return arr.length<n?null:arr.slice(-n).reduce((a,b)=>a+b,0)/n; }
+function checkBlackout(date=new Date()){
+  const y=date.getFullYear(),m=date.getMonth(),days=new Date(y,m+1,0).getDate();
+  let wc=0,fc=0,fd=null,cd=null;
+  for(let d=1;d<=days;d++){
+    const dw=new Date(y,m,d).getDay();
+    if(dw===3&&++wc===2) fd=d; if(dw===5&&++fc===2) cd=d;
+  }
+  const td=date.getDate();
+  return{active:(fd&&td>=fd-3&&td<fd)||(cd&&td>=cd-3&&td<cd),
+    fomc:!!(fd&&td>=fd-3&&td<fd),cpi:!!(cd&&td>=cd-3&&td<cd),fomcDay:fd,cpiDay:cd};
+}
+function nextFriday(){
+  const d=new Date(),diff=(5-d.getDay()+7)%7||7;
+  d.setDate(d.getDate()+diff);
+  return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+}
+function nextFridayDate(){
+  const d=new Date(),diff=(5-d.getDay()+7)%7||7;
+  d.setDate(d.getDate()+diff);
+  return d.toISOString().split("T")[0];
+}
+function fmt$(n){return n==null?"—":"$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtDate(s){if(!s) return "—"; try{return new Date(s+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}catch{return s;}}
+
+// ─── STORAGE ──────────────────────────────────────────────────────────────────
+const SK = "apex_v5";
+function ls(k,def){ try{const v=localStorage.getItem(SK+"_"+k); return v?JSON.parse(v):def;}catch{return def;} }
+function ss(k,v){ try{localStorage.setItem(SK+"_"+k,JSON.stringify(v));}catch{} }
+
+// ─── PERFORMANCE DATA ─────────────────────────────────────────────────────────
+const PERIODS=[
+  {label:"1Y", apex:{ann:36.75,sharpe:1.734,mdd:-7.0, val10k:13672}, spy:{ann:21.31,sharpe:0.899,mdd:-13.7,val10k:12130}},
+  {label:"3Y", apex:{ann:31.13,sharpe:1.376,mdd:-15.1,val10k:22518}, spy:{ann:20.59,sharpe:1.061,mdd:-18.8,val10k:17521}},
+  {label:"5Y", apex:{ann:19.02,sharpe:0.731,mdd:-23.5,val10k:23878}, spy:{ann:11.43,sharpe:0.386,mdd:-25.3,val10k:17176}},
+  {label:"7Y", apex:{ann:18.60,sharpe:0.710,mdd:-28.1,val10k:32600}, spy:{ann:12.10,sharpe:0.430,mdd:-34.6,val10k:22300}},
+  {label:"10Y",apex:{ann:20.25,sharpe:0.768,mdd:-28.1,val10k:63185}, spy:{ann:12.80,sharpe:0.444,mdd:-34.6,val10k:33337}},
+  {label:"15Y",apex:{ann:17.88,sharpe:0.668,mdd:-28.1,val10k:117705},spy:{ann:11.62,sharpe:0.391,mdd:-34.6,val10k:51998}},
+  {label:"Max",apex:{ann:15.05,sharpe:0.516,mdd:-41.0,val10k:330000},spy:{ann:6.46, sharpe:0.077,mdd:-56.5,val10k:49069}},
+];
+const ANNUAL=[
+  {yr:2000,apex:-1.0,spy:-4.6},{yr:2001,apex:8.3,spy:-10.9},{yr:2002,apex:-13.6,spy:-23.7},
+  {yr:2003,apex:39.0,spy:22.0},{yr:2004,apex:8.2,spy:8.8},{yr:2005,apex:1.0,spy:3.5},
+  {yr:2006,apex:19.4,spy:11.8},{yr:2007,apex:-2.8,spy:3.4},{yr:2008,apex:-16.7,spy:-38.0},
+  {yr:2009,apex:37.1,spy:20.8},{yr:2010,apex:21.5,spy:11.1},{yr:2011,apex:-1.2,spy:-1.1},
+  {yr:2012,apex:23.9,spy:11.7},{yr:2013,apex:40.2,spy:26.5},{yr:2014,apex:17.4,spy:12.3},
+  {yr:2015,apex:-9.9,spy:-0.7},{yr:2016,apex:13.7,spy:11.0},{yr:2017,apex:32.5,spy:18.2},
+  {yr:2018,apex:-9.0,spy:-6.9},{yr:2019,apex:33.7,spy:28.8},{yr:2020,apex:31.0,spy:15.2},
+  {yr:2021,apex:50.6,spy:28.8},{yr:2022,apex:-21.4,spy:-19.9},{yr:2023,apex:29.0,spy:24.9},
+  {yr:2024,apex:34.1,spy:24.0},{yr:2025,apex:30.3,spy:16.6},{yr:2026,apex:-0.6,spy:-1.1},
+];
+function buildCurves(){
+  let av=10000,sv=10000;
+  const a=[{yr:1999,v:10000}],s=[{yr:1999,v:10000}];
+  for(const d of ANNUAL){av*=(1+d.apex/100);sv*=(1+d.spy/100);a.push({yr:d.yr,v:Math.round(av)});s.push({yr:d.yr,v:Math.round(sv)});}
+  return{apex:a,spy:s};
+}
+const CURVES=buildCurves();
+
+// ─── DESIGN ───────────────────────────────────────────────────────────────────
+const C={
+  // Cream editorial palette — matches tear sheet / fund profile
+  bg:"#f5f0e8",        // warm cream main background
+  surface:"#ede8dc",   // slightly deeper cream for cards
+  border:"#c8c0b0",    // warm gray borders
+  text:"#1a1a1a",      // near-black primary text
+  muted:"#5c5450",     // warm gray secondary text
+  faint:"#8c847a",     // dim warm tertiary
+  // Brand accents
+  apex:"#005c2e",      // deep forest green (matches PDF)
+  gold:"#7a5c14",      // antique gold (alpha, highlights)
+  spy:"#1e3a8a",       // deep navy for SPY
+  alpha:"#7a5c14",     // same as gold
+  // Functional colors (kept readable on cream)
+  danger:"#991b1b",    // deep red
+  warn:"#92400e",      // deep amber
+  purple:"#5b21b6",    // deep purple
+  info:"#1e4d7a",      // deep teal-blue
+};
+const F={display:"'Lora',Georgia,serif",mono:"'Inter',-apple-system,sans-serif",num:"'Lora',Georgia,serif"};
+
+// ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
+function Card({children,style={},accent}){
+  return(
+    <div style={{background:"#faf6ee",border:`1px solid ${accent||C.border}`,borderRadius:12,padding:20,
+      ...(accent?{borderTop:`3px solid ${accent}`}:{}), ...style}}>
+      {children}
+    </div>
+  );
+}
+function Lbl({children}){
+  return <div style={{fontSize:9,letterSpacing:2.5,color:C.faint,textTransform:"uppercase",fontFamily:F.mono,marginBottom:6}}>{children}</div>;
+}
+function StatBox({label,value,sub,color=C.text,accent}){
+  return(
+    <Card accent={accent}>
+      <Lbl>{label}</Lbl>
+      <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:600,color,lineHeight:1}}>{value}</div>
+      {sub&&<div style={{fontSize:10,color:C.faint,marginTop:5,fontFamily:F.mono}}>{sub}</div>}
+    </Card>
+  );
+}
+function Inp({label,value,onChange,placeholder,type="number",hint,step,readOnly}){
+  const[focused,setFocused]=useState(false);
+  return(
+    <div>
+      {label&&<Lbl>{label}</Lbl>}
+      <input type={type} value={value} step={step} readOnly={readOnly}
+        onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder}
+        onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+        style={{width:"100%",boxSizing:"border-box",background:readOnly?C.surface:C.bg,
+          border:`1px solid ${focused&&!readOnly?C.apex:C.border}`,
+          borderRadius:6,padding:"9px 12px",color:C.text,
+          fontFamily:F.mono,fontSize:12,outline:"none",transition:"border-color 0.15s"}}/>
+      {hint&&<div style={{fontSize:10,color:C.faint,marginTop:4,fontFamily:F.mono}}>{hint}</div>}
+    </div>
+  );
+}
+function Sel({label,value,onChange,options}){
+  return(
+    <div>
+      {label&&<Lbl>{label}</Lbl>}
+      <select value={value} onChange={e=>onChange(e.target.value)}
+        style={{width:"100%",boxSizing:"border-box",background:C.bg,
+          border:`1px solid ${C.border}`,borderRadius:6,padding:"9px 12px",
+          color:C.text,fontFamily:F.mono,fontSize:12,outline:"none"}}>
+        {options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+      </select>
+    </div>
+  );
+}
+function Badge({text,color}){
+  return(
+    <span style={{display:"inline-block",background:color+"18",border:`1px solid ${color}50`,
+      color,borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:600,
+      fontFamily:F.display,letterSpacing:0.5}}>
+      {text}
+    </span>
+  );
+}
+
+// ─── CHARTS ───────────────────────────────────────────────────────────────────
+function LineChart({apex,spy,h=220}){
+  const W=640,PL=52,PR=70,PT=18,PB=28;
+  const IW=W-PL-PR,IH=h-PT-PB,n=apex.length;
+  const logMin=Math.log10(9500),logMax=Math.log10(400000);
+  const cx=i=>PL+(i/(n-1))*IW;
+  const cy=v=>PT+IH-((Math.log10(Math.max(v,1))-logMin)/(logMax-logMin))*IH;
+  const line=data=>data.map((d,i)=>`${i===0?"M":"L"}${cx(i).toFixed(1)},${cy(d.v).toFixed(1)}`).join(" ");
+  const area=data=>line(data)+` L${cx(n-1)},${PT+IH} L${PL},${PT+IH} Z`;
+  const yTicks=[10000,20000,50000,100000,200000,330000];
+  const xYears=[2000,2005,2010,2015,2020,2026];
+  const apexFinal=apex.at(-1).v,spyFinal=spy.at(-1).v;
+  return(
+    <svg viewBox={`0 0 ${W} ${h}`} style={{width:"100%",height:h,overflow:"visible"}}>
+      <defs>
+        <linearGradient id="agr" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={C.apex} stopOpacity="0.15"/>
+          <stop offset="100%" stopColor={C.apex} stopOpacity="0"/>
+        </linearGradient>
+        <linearGradient id="sgr" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={C.spy} stopOpacity="0.08"/>
+          <stop offset="100%" stopColor={C.spy} stopOpacity="0"/>
+        </linearGradient>
+        <clipPath id="lcc"><rect x={PL} y={PT} width={IW} height={IH}/></clipPath>
+      </defs>
+      {yTicks.map(v=>(
+        <g key={v}>
+          <line x1={PL} y1={cy(v)} x2={PL+IW} y2={cy(v)}
+            stroke={v===10000?"#cbd5e1":"#e2e8f0"} strokeWidth={v===10000?"1":"0.6"}/>
+          <text x={PL-5} y={cy(v)+3} textAnchor="end" fontSize="8" fill={C.faint}
+            fontFamily="Inter,system-ui,sans-serif">
+            {v>=100000?`$${v/1000}K`:`$${(v/1000).toFixed(0)}K`}
+          </text>
+        </g>
+      ))}
+      {xYears.map(yr=>{
+        const idx=apex.findIndex(d=>d.yr===yr);
+        if(idx<0) return null;
+        return(<g key={yr}>
+          <line x1={cx(idx)} y1={PT} x2={cx(idx)} y2={PT+IH}
+            stroke={C.border} strokeWidth="0.5" strokeDasharray="3 3"/>
+        </g>);
+      })}
+      <line x1={PL} y1={PT+IH} x2={PL+IW} y2={PT+IH} stroke={C.border} strokeWidth="1.5"/>
+      <line x1={PL} y1={PT} x2={PL} y2={PT+IH} stroke={C.border} strokeWidth="1"/>
+      <g clipPath="url(#lcc)">
+        <path d={area(spy)} fill="url(#sgr)"/>
+        <path d={area(apex)} fill="url(#agr)"/>
+      </g>
+      <path d={line(spy)} fill="none" stroke={C.spy} strokeWidth="1.8" strokeDasharray="6 3" opacity="0.75"/>
+      <path d={line(apex)} fill="none" stroke={C.apex} strokeWidth="2.5"/>
+      <circle cx={cx(n-1)} cy={cy(apexFinal)} r="3.5" fill={C.apex}/>
+      <text x={cx(n-1)+8} y={cy(apexFinal)+4} fontSize="9" fill={C.apex}
+        fontFamily="Inter,system-ui,sans-serif" fontWeight="700">$330K</text>
+      <circle cx={cx(n-1)} cy={cy(spyFinal)} r="3" fill="#2563eb" opacity="0.8"/>
+      <text x={cx(n-1)+8} y={cy(spyFinal)+4} fontSize="9" fill="#2563eb"
+        fontFamily="Inter,system-ui,sans-serif">$49K</text>
+      <text x={PL+IW} y={PT+10} textAnchor="end" fontSize="7.5" fill={C.faint}
+        fontFamily="Inter,system-ui,sans-serif" fontStyle="italic">log scale</text>
+    </svg>
+  );
+}
+function MiniBar({data,h=140}){
+  const vals=data.map(d=>[d.apex,d.spy]).flat();
+  const mx=Math.max(...vals.map(Math.abs),1);
+  const bw=9,gap=3,gg=5,mid=h/2,W=data.length*(bw*2+gap+gg);
+  const sc=v=>(Math.abs(v)/mx)*(mid-10);
+  return(
+    <svg viewBox={`0 0 ${W} ${h}`} style={{width:"100%",height:h,overflow:"visible"}}>
+      <line x1="0" y1={mid} x2={W} y2={mid} stroke={C.border} strokeWidth="1"/>
+      {data.map((d,i)=>{
+        const x=i*(bw*2+gap+gg),ah=sc(d.apex),sh=sc(d.spy);
+        return(
+          <g key={d.yr}>
+            <rect x={x} y={d.apex>=0?mid-ah:mid} width={bw} height={ah} fill={d.apex>=0?C.apex:C.danger} opacity="0.8" rx="1"/>
+            <rect x={x+bw+gap} y={d.spy>=0?mid-sh:mid} width={bw} height={sh} fill={d.spy>=0?C.spy:C.warn} opacity="0.6" rx="1"/>
+            {i%5===0&&<text x={x+bw} y={h-1} textAnchor="middle" fontSize="7" fill={C.faint} fontFamily="Inter,system-ui,sans-serif">{d.yr}</text>}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+export default function APEXApp(){
+  const [tab,setTab]       = useState("brief");
+  const [mkt,setMkt]       = useState(null);
+  const [loading,setLoading]= useState(false);
+  const [fetchErr,setFetchErr]= useState(null);
+  const [lastFetch,setLastFetch]= useState(null);
+  const [apiKey,setApiKey] = useState(()=>ls("apikey",""));
+  // Port only stores overrides — positions are derived from trade log
+  const [port,setPort] = useState(()=>ls("port",{
+    marginBalance:"",  // from broker, not derivable from trades
+    portfolioValueOverride:"", // optional manual override of latest nav
+  }));
+  const [trades,setTrades] = useState(()=>ls("trades",[]));
+  const [selP,setSelP]     = useState(6);
+  const [now,setNow]       = useState(new Date());
+  const [showAddTrade,setShowAddTrade] = useState(false);
+  const [manualMode,setManualMode] = useState(false);
+  const [manualInputs,setManualInputs] = useState({spy:"",vix:"",ma50:"",ma200:""});
+  const [newTrade,setNewTrade] = useState({type:"SELL_CALL",date:new Date().toISOString().split("T")[0],strike:"",expiry:"",premium:"",contracts:"",shares:"",price:"",pnl:"",nav_after:"",notes:""});
+
+  const setP=(k,v)=>setPort(p=>{const n={...p,[k]:v};ss("port",n);return n;});
+  // position helpers removed — all positions derived from trade log
+  const setNT=(k,v)=>setNewTrade(p=>({...p,[k]:v}));
+
+  useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
+  useEffect(()=>{ss("apikey",apiKey);},[apiKey]);
+  useEffect(()=>{ss("trades",trades);},[trades]);
+
+  // ── FINNHUB FETCH ─────────────────────────────────────────────────────────
+  const fetchData=useCallback(async(key=apiKey)=>{
+    if(!key){setFetchErr("Add your Finnhub API key in Settings to enable auto-fetch.");return;}
+    setLoading(true);setFetchErr(null);
+    try{
+      const base="https://finnhub.io/api/v1";
+      const from=Math.floor(Date.now()/1000)-310*86400;
+      const to=Math.floor(Date.now()/1000);
+      let spyQ,candles,vixQ;
+      try{
+        [spyQ,candles,vixQ]=await Promise.all([
+          fetch(`${base}/quote?symbol=SPY&token=${key}`).then(r=>r.json()),
+          fetch(`${base}/stock/candle?symbol=SPY&resolution=D&from=${from}&to=${to}&token=${key}`).then(r=>r.json()),
+          fetch(`${base}/quote?symbol=VIX&token=${key}`).then(r=>r.json()),
+        ]);
+      }catch(netErr){
+        // Network blocked (sandbox environment) — switch to manual mode
+        throw new Error("SANDBOX_BLOCKED");
+      }
+      if(candles?.error||spyQ?.error) throw new Error(`Finnhub: ${candles?.error||spyQ?.error}`);
+      if(candles.s!=="ok"||!candles.c?.length) throw new Error("Candle data unavailable. Verify your API key at finnhub.io and try again.");
+      const closes=candles.c;
+      const spy=spyQ.c||closes.at(-1);
+      const vix=vixQ.c||18;
+      const ma50=sma(closes,50);
+      const ma200=sma(closes,200);
+      const ma50_10=sma(closes.slice(0,-10),50);
+      const ma200_20=sma(closes.slice(0,-20),200);
+      const ma50s=ma50&&ma50_10?(ma50-ma50_10)/ma50_10:0;
+      const ma200s=ma200&&ma200_20?(ma200-ma200_20)/ma200_20:0;
+      const r5=closes.length>=6?(spy-closes.at(-6))/closes.at(-6):0;
+      const r20=closes.length>=21?(spy-closes.at(-21))/closes.at(-21):0;
+      setMkt({spy,vix,ma50,ma200,ma50s,ma200s,r5,r20,fetchedAt:new Date().toISOString()});
+      setLastFetch(new Date());
+    }catch(e){
+      if(e.message==="SANDBOX_BLOCKED"){
+        setFetchErr("SANDBOX");
+      } else {
+        setFetchErr(e.message||"Fetch failed");
+      }
+    }finally{setLoading(false);}
+  },[apiKey]);
+
+  useEffect(()=>{
+    if(apiKey) fetchData();
+    const iv=setInterval(()=>{
+      const h=new Date().getHours(),dw=new Date().getDay();
+      if(dw>=1&&dw<=5&&h>=9&&h<17&&apiKey) fetchData();
+    },5*60*1000);
+    return()=>clearInterval(iv);
+  },[fetchData,apiKey]);
+
+  // ── COMPUTE SIGNALS ───────────────────────────────────────────────────────
+  const sig=useMemo(()=>{
+    if(!mkt||!mkt.ma50||!mkt.ma200) return null;
+    const{spy,vix,ma50,ma200,ma50s,ma200s,r5,r20}=mkt;
+    const iv=vix/100*IV_MULT;
+    const reg=getRegime(spy,ma50,ma200);
+    const lev=REGIME_LEV[reg];
+    // Portfolio value: override → latest nav_after in trades → default
+    const latestNav=(()=>{
+      const pts=[...trades].filter(t=>t.nav_after&&parseFloat(t.nav_after)>0)
+        .sort((a,b)=>b.date.localeCompare(a.date));
+      return pts.length>0?parseFloat(pts[0].nav_after):NAV0;
+    })();
+    const nav=parseFloat(port.portfolioValueOverride)||latestNav;
+    const notional=nav*lev;
+    const tgtShares=Math.floor(notional/spy);
+    const maxContracts=Math.floor(tgtShares/100);
+    const baseDelta=REGIME_DELTA[reg];
+    const adjDelta=applyVixAdj(baseDelta,vix);
+    const ts=calcTrend(spy,ma50,ma200,r5,r20,ma50s,ma200s);
+    const ow=owFromScore(ts);
+    const contracts=Math.floor(maxContracts*ow);
+    const T=CALL_DTE/365;
+    const strike=strikeForDelta(spy,T,iv,adjDelta);
+    const prem=bsCall(spy,strike,T,iv);
+    const annYield=(prem/spy)*(365/CALL_DTE)*100;
+    const totalPrem=prem*contracts*100;
+    const bo=checkBlackout();
+    const marginB=Math.max(0,notional-nav);
+    const idle=Math.max(0,nav-notional);
+    const curShares=parseInt(port.shares)||0;
+    const curLev=nav>0?(curShares*spy)/nav:0;
+    const levDrift=curLev-lev;
+    const sharesDelta=tgtShares-curShares;
+    // Aggregate all open calls for P&L and roll
+    const activeCalls=(port.calls||[]).filter(c=>parseFloat(c.strike)>0&&parseFloat(c.premium)>0&&parseInt(c.contracts)>0);
+    let callPnL=null,roll=null,callVal=null;
+    let totalCallPnL=0,anyRollTrigger=false,rollPct=0;
+    const callDetails=activeCalls.map(c=>{
+      const oStrike=parseFloat(c.strike),oPrem=parseFloat(c.premium),oCon=parseInt(c.contracts)||0;
+      const Tr=c.expiry?Math.max((new Date(c.expiry)-new Date())/(365*86400000),0.001):3/365;
+      const cv=bsCall(spy,oStrike,Tr,iv);
+      const pct=oPrem>0?(oPrem-cv)/oPrem:0;
+      const pnl=(oPrem-cv)*oCon*100;
+      totalCallPnL+=pnl;
+      if(pct>=0.70) anyRollTrigger=true;
+      rollPct=Math.max(rollPct,pct);
+      return{...c,callVal:cv,pnl,pct};
+    });
+    if(activeCalls.length>0){
+      callVal=callDetails[0]?.callVal;
+      roll={pct:rollPct,trigger:anyRollTrigger,val:callVal};
+      callPnL=totalCallPnL;
+    }
+    // For backward compat with action items (uses first call)
+    const firstCall=port.calls?.[0]||{};
+    return{reg,lev,nav,notional,tgtShares,maxContracts,adjDelta,baseDelta,ts,ow,contracts,
+      strike,prem,annYield,totalPrem,bo,iv,vix,marginB,idle,
+      dailyM:marginB*MARGIN_RATE/252,dailyT:idle*TBILL_RATE/252,
+      curShares,curLev,levDrift,sharesDelta,callPnL,roll,callVal,spy,ma50,ma200};
+  },[mkt,port]);
+
+  // ── ACTION ITEMS ──────────────────────────────────────────────────────────
+  const actions=useMemo(()=>{
+    if(!sig) return null;
+    const items=[];
+    if(sig.bo.active){
+      items.push({priority:"high",type:"BLACKOUT",icon:"⛔",color:C.warn,
+        title:"Blackout — No new calls",
+        desc:`${sig.bo.fomc?`FOMC on the ${sig.bo.fomcDay}th.`:""}${sig.bo.cpi?` CPI on the ${sig.bo.cpiDay}th.`:""} Do not sell calls. Hold all positions. Resume Monday after the event.`,
+        action:null});
+    }
+    if(sig.roll?.trigger){
+      items.push({priority:"high",type:"ROLL",icon:"⚡",color:C.purple,
+        title:`Roll open call — ${(sig.roll.pct*100).toFixed(0)}% captured`,
+        desc:`Buy back ${firstCall.contracts}× SPY $${firstCall.strike}C at market open (~$${sig.roll.val.toFixed(2)}/sh). Then sell new call per item below.`,
+        action:{label:`Buy back ${port.call_contracts}× $${port.call_strike}C`,detail:`Cost ~$${(sig.roll.val*(parseInt(firstCall.contracts)||0)*100).toFixed(0)}`}});
+    }
+    if(Math.abs(sig.levDrift)>0.03&&sig.curShares>0){
+      const buy=sig.sharesDelta>0;
+      items.push({priority:Math.abs(sig.levDrift)>0.1?"high":"medium",type:"REBALANCE",icon:"⚖",color:buy?C.apex:C.warn,
+        title:`${buy?"Buy":"Sell"} ${Math.abs(sig.sharesDelta).toLocaleString()} SPY shares`,
+        desc:`Current leverage ${sig.curLev.toFixed(2)}x vs target ${sig.lev}x (drift ${sig.levDrift>=0?"+":""}${sig.levDrift.toFixed(2)}x). ${buy?"Buy":"Sell"} ${Math.abs(sig.sharesDelta)} shares at market open.`,
+        action:{label:`${buy?"BUY":"SELL"} ${Math.abs(sig.sharesDelta)} SPY`,detail:`~${fmt$(Math.abs(sig.sharesDelta)*sig.spy)} total`}});
+    }
+    if(!sig.bo.active){
+      const hasOpenCall=(port.calls||[]).some(c=>parseFloat(c.strike)>0&&c.expiry&&new Date(c.expiry)>new Date());
+      if(!hasOpenCall||sig.roll?.trigger){
+        items.push({priority:"medium",type:"SELL_CALL",icon:"📝",color:C.info,
+          title:`Sell ${sig.contracts} contracts · SPY $${sig.strike.toFixed(2)}C`,
+          desc:`${nextFriday()} expiry · Δ${sig.adjDelta.toFixed(2)}${sig.adjDelta!==sig.baseDelta?` (VIX-adj from Δ${sig.baseDelta.toFixed(2)})`:""} · ${(sig.ow*100).toFixed(0)}% overwrite · ~$${(sig.prem*100).toFixed(0)}/contract · Total ~$${sig.totalPrem.toLocaleString("en-US",{maximumFractionDigits:0})} premium`,
+          action:{label:`SELL ${sig.contracts}× SPY $${sig.strike.toFixed(2)}C`,detail:`exp ${nextFriday()} · ~$${sig.totalPrem.toLocaleString("en-US",{maximumFractionDigits:0})} total`}});
+      }
+    }
+    return items;
+  },[sig,port]);
+
+  // ── TIME-WEIGHTED RETURN — correctly handles deposits & withdrawals ──────
+  const twr=useMemo(()=>{
+    // Every trade with nav_after is a sub-period boundary
+    // Deposits/withdrawals are EXCLUDED from return calc (that's the point of TWR)
+    // but they DO create a new sub-period boundary
+    const pts=[...trades]
+      .filter(t=>t.nav_after&&parseFloat(t.nav_after)>0&&t.date)
+      .sort((a,b)=>a.date.localeCompare(b.date))
+      .map(t=>({
+        date:t.date,
+        val:parseFloat(t.nav_after),
+        isCashFlow:t.type==="DEPOSIT"||t.type==="WITHDRAWAL",
+        amount:t.type==="DEPOSIT"?parseFloat(t.amount||0):
+               t.type==="WITHDRAWAL"?-parseFloat(t.amount||0):0,
+      }));
+    if(pts.length<2) return null;
+    // TWR: chain sub-period returns, adjusting for cash flows
+    // For each period: HPR = (EndValue - CashFlow) / StartValue
+    // CashFlow at period end = deposit added or withdrawal taken
+    let twrProduct=1;
+    for(let i=1;i<pts.length;i++){
+      const startVal=pts[i-1].val;
+      if(startVal<=0) continue;
+      // If this boundary is a cash flow, the return for this sub-period
+      // should exclude the cash flow itself
+      const cashFlow=pts[i].isCashFlow?pts[i].amount:0;
+      const endValExCashFlow=pts[i].val-cashFlow;
+      const hpr=endValExCashFlow/startVal;
+      if(hpr>0) twrProduct*=hpr;
+    }
+    const firstDate=new Date(pts[0].date+"T12:00:00");
+    const years=(Date.now()-firstDate.getTime())/(365.25*24*3600*1000);
+    if(years<0.01) return null;
+    const annualized=(Math.pow(twrProduct,1/years)-1)*100;
+    const totalReturn=(twrProduct-1)*100;
+    // Net cash flows (deposits - withdrawals)
+    const netCashFlows=pts.filter(p=>p.isCashFlow).reduce((s,p)=>s+p.amount,0);
+    return{
+      annualized, totalReturn, years,
+      startVal:pts[0].val, currentVal:pts.at(-1).val,
+      periods:pts.length, firstDate:pts[0].date,
+      netCashFlows, deposits:pts.filter(p=>p.amount>0).length,
+      withdrawals:pts.filter(p=>p.amount<0).length,
+    };
+  },[trades]);
+
+  const isOpen=now.getDay()>=1&&now.getDay()<=5&&(now.getHours()>9||(now.getHours()===9&&now.getMinutes()>=30))&&now.getHours()<16;
+  const rc=sig?.reg??3;
+  const rText=REGIME_TEXT[rc], rBorder=REGIME_BORDER[rc];
+  const selPer=PERIODS[selP];
+
+  // ── ADD TRADE ─────────────────────────────────────────────────────────────
+  function submitTrade(){
+    const entry={...newTrade,id:Date.now()};
+    const updated=[entry,...trades];
+    setTrades(updated);
+    setShowAddTrade(false);
+    setNewTrade({type:"SELL_CALL",date:new Date().toISOString().split("T")[0],strike:"",expiry:"",premium:"",contracts:"",shares:"",price:"",pnl:"",nav_after:"",notes:""});
+  }
+  function deleteTrade(id){
+    if(window.confirm("Delete this trade entry?")) setTrades(trades.filter(t=>t.id!==id));
+  }
+
+  // Pre-fill new trade from signal
+  function prefillFromSig(type){
+    if(!sig) return;
+    if(type==="SELL_CALL") setNewTrade(p=>({...p,type,strike:sig.strike.toFixed(2),expiry:nextFridayDate(),premium:sig.prem.toFixed(2),contracts:String(sig.contracts),date:new Date().toISOString().split("T")[0]}));
+    else if(type==="REBALANCE") setNewTrade(p=>({...p,type,shares:String(Math.abs(sig.sharesDelta)),price:sig.spy.toFixed(2),date:new Date().toISOString().split("T")[0]}));
+    else setNewTrade(p=>({...p,type,date:new Date().toISOString().split("T")[0]}));
+    setShowAddTrade(true);
+  }
+
+  const TRADE_TYPES=[
+    {v:"SELL_CALL",   l:"Sell Call"},
+    {v:"BUY_CALL",    l:"Buy Back Call"},
+    {v:"ROLL",        l:"Roll (Buy + Sell)"},
+    {v:"BUY_SHARES",  l:"Buy Shares"},
+    {v:"SELL_SHARES", l:"Sell Shares"},
+    {v:"DEPOSIT",     l:"Deposit (Capital In)"},
+    {v:"WITHDRAWAL",  l:"Withdrawal (Capital Out)"},
+    {v:"OTHER",       l:"Other"},
+  ];
+  const TRADE_COLORS={
+    SELL_CALL:C.info, BUY_CALL:C.purple, ROLL:C.purple,
+    BUY_SHARES:C.apex, SELL_SHARES:C.warn,
+    DEPOSIT:"#1e4d7a", WITHDRAWAL:"#5b21b6", OTHER:C.muted
+  };
+
+  const TabBtn=({id,label})=>(
+    <button onClick={()=>setTab(id)} style={{
+      background:"none",border:"none",
+      borderBottom:`2px solid ${tab===id?rText:"transparent"}`,
+      color:tab===id?rText:C.muted,
+      padding:"14px 14px",fontFamily:F.mono,fontSize:10,
+      letterSpacing:2,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",
+    }}>{label}</button>
+  );
+
+  // ─── RENDER ───────────────────────────────────────────────────────────────
+  return(
+    <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:F.mono}}>
+
+      {/* TOP BAR */}
+      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,
+        padding:"0 24px",display:"flex",alignItems:"center",
+        justifyContent:"space-between",height:64,position:"sticky",top:0,zIndex:200,
+        boxShadow:"0 2px 8px rgba(90,70,40,0.12)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:44,height:44,borderRadius:10,overflow:"hidden",
+            background:"transparent",flexShrink:0}}>
+            <img src={APEX_LOGO} alt="APEX" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          </div>
+          <div>
+            <div style={{fontFamily:F.display,fontSize:15,fontWeight:700,letterSpacing:3,color:C.apex,lineHeight:1}}>APEX</div>
+            <div style={{fontSize:8,color:C.faint,letterSpacing:3}}>DYNAMIC SPY STRATEGY</div>
+          </div>
+          {sig&&(
+            <div style={{marginLeft:6,background:REGIME_BG[rc],border:`1px solid ${rBorder}`,
+              borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:600,
+              color:rText,fontFamily:F.mono,letterSpacing:0}}>{REGIME_NAME[rc]}</div>
+          )}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:16}}>
+          {mkt&&(
+            <div style={{display:"flex",gap:18}}>
+              {[
+                {l:"SPY",  v:`$${mkt.spy.toFixed(2)}`,   c:C.apex},
+                {l:"VIX",  v:mkt.vix.toFixed(1),          c:mkt.vix>25?C.danger:mkt.vix<16?C.apex:C.text},
+                {l:"MA50", v:`$${mkt.ma50?.toFixed(2)}`,  c:mkt.spy>=(mkt.ma50||0)?C.apex:C.danger},
+                {l:"MA200",v:`$${mkt.ma200?.toFixed(2)}`, c:mkt.spy>=(mkt.ma200||0)?C.apex:C.danger},
+              ].map(({l,v,c})=>(
+                <div key={l} style={{textAlign:"right"}}>
+                  <div style={{fontSize:8,color:C.faint,letterSpacing:2}}>{l}</div>
+                  <div style={{fontFamily:F.mono,fontSize:12,fontWeight:500,color:c}}>{v}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{borderLeft:`1px solid ${C.border}`,paddingLeft:16,textAlign:"right"}}>
+            <div style={{fontSize:10,color:isOpen?C.apex:C.danger,fontWeight:600,letterSpacing:1}}>
+              {isOpen?"● OPEN":"● CLOSED"}
+            </div>
+            <div style={{fontSize:9,color:C.faint}}>{now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</div>
+          </div>
+          <button onClick={()=>fetchData()} disabled={loading} style={{
+            background:loading?C.bg:C.text,border:`1px solid ${loading?C.border:C.text}`,
+            borderRadius:8,color:loading?C.faint:"#fff",padding:"8px 16px",
+            fontFamily:F.mono,fontSize:10,cursor:loading?"wait":"pointer",letterSpacing:1}}>
+            {loading?"···":"↻ REFRESH"}
+          </button>
+        </div>
+      </div>
+
+      {/* STATUS BAR */}
+      {/* Status / data bar */}
+      {fetchErr==="SANDBOX"&&!manualMode&&(
+        <div style={{background:"#fdf4e7",borderBottom:"1px solid #fed7aa",
+          padding:"10px 24px",display:"flex",justifyContent:"space-between",
+          alignItems:"center",flexWrap:"wrap",gap:10}}>
+          <div>
+            <div style={{fontSize:11,color:"#c2410c",fontWeight:600,marginBottom:2}}>
+              ⚠ Network access is blocked in this preview environment
+            </div>
+            <div style={{fontSize:10,color:"#ea580c"}}>
+              Your API key is saved. Finnhub will work when deployed to Vercel.
+              For now, enter today's data manually below.
+            </div>
+          </div>
+          <button onClick={()=>setManualMode(true)} style={{
+            background:"#c2410c",border:"none",borderRadius:7,color:"#fff",
+            padding:"7px 18px",fontFamily:F.mono,fontSize:10,cursor:"pointer",
+            letterSpacing:1,whiteSpace:"nowrap"}}>
+            ENTER DATA MANUALLY →
+          </button>
+        </div>
+      )}
+      {fetchErr==="SANDBOX"&&manualMode&&(
+        <div style={{background:"#eef2f8",borderBottom:"1px solid #bfdbfe",
+          padding:"10px 24px",display:"flex",alignItems:"center",
+          flexWrap:"wrap",gap:12}}>
+          <span style={{fontSize:10,color:C.info,fontWeight:600,flexShrink:0}}>
+            📊 Enter EOD data from stooq.com or barchart.com:
+          </span>
+          {[{k:"spy",ph:"SPY price",w:90},{k:"vix",ph:"VIX",w:70},
+            {k:"ma50",ph:"MA50",w:90},{k:"ma200",ph:"MA200",w:90}].map(({k,ph,w})=>(
+            <input key={k} type="number" value={manualInputs[k]}
+              onChange={e=>setManualInputs(p=>({...p,[k]:e.target.value}))}
+              placeholder={ph} step="0.01"
+              style={{width:w,background:"#fff",border:`1px solid ${C.border}`,
+                borderRadius:6,padding:"6px 8px",fontSize:11,
+                color:C.text,fontFamily:F.mono,outline:"none"}}/>
+          ))}
+          <button onClick={()=>{
+            const{spy,vix,ma50,ma200}=manualInputs;
+            if(spy&&vix&&ma50&&ma200){
+              setMkt({spy:parseFloat(spy),vix:parseFloat(vix),
+                ma50:parseFloat(ma50),ma200:parseFloat(ma200),
+                ma50s:0,ma200s:0,r5:0,r20:0,
+                fetchedAt:new Date().toISOString()});
+              setLastFetch(new Date());
+              setFetchErr(null);
+            }
+          }} style={{background:C.text,border:"none",borderRadius:6,
+            color:"#fff",padding:"6px 16px",fontFamily:F.mono,
+            fontSize:10,cursor:"pointer",letterSpacing:1}}>
+            LOAD →
+          </button>
+        </div>
+      )}
+      {fetchErr&&fetchErr!=="SANDBOX"&&(
+        <div style={{background:"#fdf0f0",borderBottom:"1px solid #fecaca",
+          padding:"9px 24px",fontSize:11,color:C.danger,
+          display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>✗ {fetchErr}</span>
+          <button onClick={()=>{setFetchErr(null);setManualMode(true);}}
+            style={{background:"none",border:`1px solid ${C.danger}`,borderRadius:5,
+              color:C.danger,padding:"3px 10px",fontSize:10,cursor:"pointer"}}>
+            Enter manually
+          </button>
+        </div>
+      )}
+      {!apiKey&&!fetchErr&&(
+        <div style={{background:"#eef2f8",borderBottom:"1px solid #bfdbfe",
+          padding:"9px 24px",fontSize:11,color:C.info}}>
+          No API key — go to Settings to add your free Finnhub key for auto-fetch
+        </div>
+      )}
+      {mkt&&!fetchErr&&(
+        <div style={{background:"#eef7f0",borderBottom:"1px solid #bbf7d0",
+          padding:"7px 24px",fontSize:10,color:"#166534",
+          display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>✓ Data loaded · SPY ${mkt.spy.toFixed(2)} · VIX {mkt.vix.toFixed(1)} · MA50 ${mkt.ma50?.toFixed(2)} · MA200 ${mkt.ma200?.toFixed(2)}</span>
+          {lastFetch&&<span style={{color:"#4ade80"}}>
+            {manualMode?"Manual entry":"Auto-fetched"} {lastFetch.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}
+          </span>}
+        </div>
+      )}
+
+      {/* TABS */}
+      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,
+        paddingLeft:16,display:"flex",overflowX:"auto"}}>
+        {[["brief","DAILY BRIEF"],["actions","ACTION ITEMS"],["portfolio","POSITIONS"],
+          ["tradelog","TRADE LOG"],["performance","PERFORMANCE"],
+          ["fundprofile","FUND PROFILE"],["settings","SETTINGS"]].map(([id,label])=>(
+          <TabBtn key={id} id={id} label={label}/>
+        ))}
+      </div>
+
+      <div style={{maxWidth:1120,margin:"0 auto",padding:"24px 20px"}}>
+
+        {/* ══════════════════════ DAILY BRIEF */}
+        {tab==="brief"&&(
+          !mkt?(
+            <Card style={{textAlign:"center",padding:"60px 40px"}}>
+              <div style={{fontFamily:F.display,fontSize:24,color:C.faint,marginBottom:12}}>▲</div>
+              <div style={{fontFamily:F.mono,fontSize:14,fontWeight:600,color:C.muted,marginBottom:10}}>
+                {loading?"Fetching market data…":"Add your Finnhub API key in Settings"}
+              </div>
+              <div style={{fontSize:12,color:C.faint,lineHeight:1.9,maxWidth:380,margin:"0 auto"}}>
+                Free at <b style={{color:C.info}}>finnhub.io</b> — sign up takes 2 minutes.<br/>
+                Paste your key in Settings and the app auto-fetches SPY, VIX, MA50 &amp; MA200.
+              </div>
+              <button onClick={()=>setTab("settings")} style={{marginTop:24,background:C.text,
+                border:"none",borderRadius:8,color:"#fff",padding:"10px 24px",
+                fontFamily:F.mono,fontSize:11,cursor:"pointer",letterSpacing:1}}>
+                GO TO SETTINGS →
+              </button>
+            </Card>
+          ):(
+            <div>
+              <Card accent={sig?.bo.active?C.warn:rBorder} style={{marginBottom:16,padding:28}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:8}}>
+                  <div style={{fontSize:8,letterSpacing:3,color:C.faint}}>
+                    TODAY'S BRIEF · {now.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}
+                  </div>
+                  {lastFetch&&<div style={{fontSize:9,color:C.faint}}>Last sync {lastFetch.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}</div>}
+                </div>
+                {sig?.bo.active?(
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+                      <span style={{fontSize:20}}>⛔</span>
+                      <div style={{fontFamily:F.display,fontSize:16,fontWeight:700,color:C.warn}}>BLACKOUT — DO NOT SELL CALLS</div>
+                    </div>
+                    <div style={{color:C.muted,fontSize:12,lineHeight:1.9,maxWidth:560}}>
+                      {sig.bo.fomc&&`FOMC meeting on the ${sig.bo.fomcDay}th. `}
+                      {sig.bo.cpi&&`CPI release on the ${sig.bo.cpiDay}th. `}
+                      Hold existing positions. Resume Monday after the event.
+                    </div>
+                  </div>
+                ):(
+                  <>
+                    {sig?.roll?.trigger&&(
+                      <div style={{background:"#f0ebe2",border:`1px solid #c4b5fd`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:10,alignItems:"flex-start"}}>
+                        <span style={{fontSize:18}}>⚡</span>
+                        <div>
+                          <div style={{fontFamily:F.display,color:C.purple,fontWeight:700,fontSize:13,marginBottom:3}}>EARLY ROLL — {(sig.roll.pct*100).toFixed(0)}% CAPTURED</div>
+                          <div style={{color:C.muted,fontSize:11}}>Buy back {port.call_contracts}× ${port.call_strike}C (~${sig.roll.val.toFixed(2)}/sh). Then sell new call below.</div>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{marginBottom:22}}>
+                      <Lbl>ACTION</Lbl>
+                      <div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,color:C.text,lineHeight:1.6}}>
+                        Sell <span style={{color:C.info}}>{sig?.contracts} contracts</span>
+                        {" · "}<span style={{color:C.apex}}>SPY ${sig?.strike.toFixed(2)}C</span>
+                        {" · exp "}<span style={{color:C.purple}}>{nextFriday()}</span>
+                      </div>
+                      <div style={{fontSize:10,color:C.muted,marginTop:8}}>
+                        Δ{sig?.adjDelta.toFixed(2)}{sig?.adjDelta!==sig?.baseDelta&&<span style={{color:C.warn}}> (VIX-adj from Δ{sig?.baseDelta.toFixed(2)})</span>}
+                        {" · "}{((sig?.ow||1)*100).toFixed(0)}% overwrite
+                        {" · "}{((sig?.contracts||0)*100).toLocaleString()} shares covered
+                      </div>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>
+                      {[
+                        {l:"PREMIUM/SHARE",v:`$${sig?.prem.toFixed(2)}`,c:C.apex},
+                        {l:"PER CONTRACT", v:`$${((sig?.prem||0)*100).toFixed(0)}`,c:C.apex},
+                        {l:"TOTAL PREMIUM",v:`$${(sig?.totalPrem||0).toLocaleString("en-US",{maximumFractionDigits:0})}`,c:C.apex},
+                        {l:"ANN. YIELD",   v:`${(sig?.annYield||0).toFixed(1)}%`,c:C.apex},
+                        {l:"DELTA",        v:(sig?.adjDelta||0).toFixed(2),c:rText},
+                        {l:"EXPIRY",       v:nextFriday(),c:C.purple},
+                      ].map(({l,v,c})=>(
+                        <div key={l} style={{background:C.bg,borderRadius:8,border:`1px solid ${C.border}`,padding:"10px 12px"}}>
+                          <Lbl>{l}</Lbl>
+                          <div style={{fontFamily:F.mono,fontSize:12,fontWeight:500,color:c}}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </Card>
+
+              {/* Regime + signals */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                <Card>
+                  <Lbl>REGIME STACK</Lbl>
+                  <div style={{marginTop:10}}>
+                    {[3,2,1,0].map(r=>{
+                      const active=sig?.reg===r;
+                      return(
+                        <div key={r} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,marginBottom:4,
+                          background:active?REGIME_BG[r]:"transparent",
+                          border:active?`1px solid ${REGIME_BORDER[r]}`:"1px solid transparent"}}>
+                          <div style={{width:7,height:7,borderRadius:"50%",flexShrink:0,background:active?REGIME_TEXT[r]:C.border}}/>
+                          <div style={{flex:1}}>
+                            <div style={{fontFamily:F.mono,fontSize:11,fontWeight:active?600:400,color:active?REGIME_TEXT[r]:C.muted}}>{REGIME_NAME[r]}</div>
+                            <div style={{fontSize:9,color:C.faint}}>{REGIME_DESC[r]}</div>
+                          </div>
+                          {active&&<div style={{fontSize:9,color:REGIME_TEXT[r],fontWeight:500}}>ACTIVE</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border}`,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    {[{l:"SPY",v:`$${sig?.spy.toFixed(2)}`,c:C.text},{l:"MA50",v:`$${sig?.ma50.toFixed(2)}`,c:sig?.spy>=sig?.ma50?C.apex:C.danger},{l:"MA200",v:`$${sig?.ma200.toFixed(2)}`,c:sig?.spy>=sig?.ma200?C.apex:C.danger}]
+                      .map(({l,v,c})=>(
+                      <div key={l} style={{textAlign:"center",background:C.bg,borderRadius:6,padding:"8px 4px",border:`1px solid ${C.border}`}}>
+                        <div style={{fontSize:8,color:C.faint,letterSpacing:2,marginBottom:2}}>{l}</div>
+                        <div style={{fontFamily:F.display,fontSize:12,fontWeight:700,color:c}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+                <Card>
+                  <Lbl>SIGNAL DASHBOARD</Lbl>
+                  <div style={{marginTop:10}}>
+                    <div style={{marginBottom:14}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                        <span style={{fontSize:10,color:C.muted}}>Trend Score</span>
+                        <span style={{fontFamily:F.display,fontSize:14,fontWeight:700,color:sig?.ts>0.7?C.apex:sig?.ts>0.5?C.alpha:C.muted}}>{sig?.ts.toFixed(2)}</span>
+                      </div>
+                      <div style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:4,height:6}}>
+                        <div style={{width:`${(sig?.ts||0)*100}%`,height:"100%",borderRadius:4,background:sig?.ts>0.7?C.apex:sig?.ts>0.5?C.alpha:C.muted,transition:"width 0.5s"}}/>
+                      </div>
+                      <div style={{fontSize:9,color:C.faint,marginTop:4}}>{sig?.ts>0.7?"Strong → 25% OW":sig?.ts>0.5?"Moderate → 50% OW":"Weak/Range → Full OW"}</div>
+                    </div>
+                    {[
+                      {t:"Regime",     v:REGIME_NAME[sig?.reg??3],ok:true},
+                      {t:"Adj delta",  v:`Δ${(sig?.adjDelta||0).toFixed(2)}`,ok:true},
+                      {t:"Overwrite",  v:`${((sig?.ow||1)*100).toFixed(0)}%`,ok:true},
+                      {t:"Blackout",   v:sig?.bo.active?"ACTIVE":"Clear",ok:!sig?.bo.active,warn:sig?.bo.active},
+                      {t:"Lev drift",  v:Math.abs(sig?.levDrift||0)<0.1?"On target":`${sig?.sharesDelta>0?"+":""}${sig?.sharesDelta} shs`,ok:Math.abs(sig?.levDrift||0)<0.1},
+                      {t:"Early roll", v:sig?.roll?`${(sig.roll.pct*100).toFixed(0)}% captured`:"No open call",ok:!sig?.roll?.trigger},
+                    ].map((item,i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                        padding:"6px 10px",borderRadius:5,marginBottom:3,
+                        background:item.warn?"#fef2f2":i%2===0?C.bg:"transparent"}}>
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <span style={{fontSize:11,color:item.ok?C.apex:item.warn?C.warn:C.border}}>{item.ok?"✓":item.warn?"⚠":"○"}</span>
+                          <span style={{fontSize:10,color:C.muted}}>{item.t}</span>
+                        </div>
+                        <span style={{fontSize:10,fontWeight:600,color:item.warn?C.warn:item.ok?C.text:C.faint}}>{item.v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12}}>
+                <StatBox label="Target Leverage" value={`${sig?.lev}x`} sub={`$${((sig?.notional||0)/1e6).toFixed(2)}M notional`} color={rText} accent={rBorder}/>
+                <StatBox label="Contracts Avail." value={sig?.maxContracts??"—"} sub={`${sig?.contracts} written (${((sig?.ow||1)*100).toFixed(0)}% OW)`}/>
+                <StatBox label="Daily Margin" value={`−$${(sig?.dailyM||0).toFixed(0)}`} sub={`$${((sig?.marginB||0)/1e6).toFixed(2)}M @ 4.5%`} color={C.danger}/>
+                <StatBox label="Daily T-Bill" value={`+$${(sig?.dailyT||0).toFixed(0)}`} sub={`$${((sig?.idle||0)/1e6).toFixed(2)}M idle`} color={C.apex}/>
+                <StatBox label="Implied Vol" value={`${((sig?.iv||0)*100).toFixed(1)}%`} sub={`VIX ${(sig?.vix||0).toFixed(1)} × 1.10`}/>
+              </div>
+            </div>
+          )
+        )}
+
+        {/* ══════════════════════ ACTION ITEMS */}
+        {tab==="actions"&&(
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div>
+                <div style={{fontFamily:F.display,fontSize:16,fontWeight:700,color:C.text}}>Tomorrow's Action Items</div>
+                <div style={{fontSize:11,color:C.faint,marginTop:4}}>Execute in order at market open (9:35–9:45 AM ET)</div>
+              </div>
+              <div style={{fontSize:10,color:C.faint,textAlign:"right"}}>
+                {now.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}<br/>
+                <span style={{color:isOpen?C.apex:C.danger}}>{isOpen?"Market Open":"Market Closed"}</span>
+              </div>
+            </div>
+
+            {!mkt?(
+              <Card style={{textAlign:"center",padding:"60px 40px"}}>
+                <div style={{fontFamily:F.mono,fontSize:14,fontWeight:600,color:C.muted,marginBottom:8}}>No market data</div>
+                <div style={{fontSize:11,color:C.faint}}>Add Finnhub API key in Settings to load signals</div>
+              </Card>
+            ):actions?.length===0?(
+              <Card accent={C.apex} style={{padding:40,textAlign:"center"}}>
+                <div style={{fontSize:22,marginBottom:8,color:C.apex}}>✓</div>
+                <div style={{fontFamily:F.display,fontSize:16,fontWeight:700,color:C.apex,marginBottom:8}}>No Action Required</div>
+                <div style={{fontSize:12,color:C.muted,lineHeight:1.8}}>
+                  Leverage is on target · No open calls to roll · No blackout in effect.<br/>
+                  Open call is running normally. Check back Monday morning.
+                </div>
+              </Card>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                {actions?.map((item,i)=>(
+                  <div key={i} style={{background:C.surface,border:`1px solid ${item.color}30`,
+                    borderLeft:`4px solid ${item.color}`,borderRadius:12,padding:24,
+                    display:"flex",gap:20,alignItems:"flex-start"}}>
+                    <div style={{fontSize:22,lineHeight:1,flexShrink:0}}>{item.icon}</div>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,flexWrap:"wrap"}}>
+                        <Badge text={item.type.replace("_"," ")} color={item.color}/>
+                        <Badge text={item.priority==="high"?"HIGH PRIORITY":"STANDARD"} color={item.priority==="high"?C.danger:C.muted}/>
+                        <span style={{fontSize:9,color:C.faint}}>ITEM {i+1} OF {actions.length}</span>
+                      </div>
+                      <div style={{fontFamily:F.mono,fontSize:13,fontWeight:600,color:C.text,marginBottom:6}}>
+                        {item.title}
+                      </div>
+                      <div style={{fontSize:12,color:C.muted,lineHeight:1.8,marginBottom:item.action?14:0}}>
+                        {item.desc}
+                      </div>
+                      {item.action&&(
+                        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                          <div style={{background:item.color+"12",border:`1px solid ${item.color}40`,
+                            borderRadius:8,padding:"8px 16px",fontFamily:F.display,
+                            fontWeight:700,fontSize:13,color:item.color}}>
+                            {item.action.label}
+                          </div>
+                          <span style={{fontSize:11,color:C.faint}}>{item.action.detail}</span>
+                          <button onClick={()=>prefillFromSig(item.type)} style={{
+                            marginLeft:"auto",background:C.surface,border:`1px solid ${C.border}`,
+                            borderRadius:6,padding:"6px 14px",fontFamily:F.mono,
+                            fontSize:10,cursor:"pointer",color:C.muted,letterSpacing:1}}>
+                            + LOG TRADE
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div style={{marginTop:8,padding:16,background:"#eef7f0",border:`1px solid ${C.border}`,borderRadius:10,fontSize:11,color:"#166534",lineHeight:1.8}}>
+                  <b>Execution window:</b> 9:35–9:45 AM ET Monday morning. Execute items top to bottom.
+                  All option orders as limit orders at mid-price or better. Share rebalances as market orders.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════ POSITIONS */}
+        {/* ══════════════════════ POSITIONS */}
+        {/* ══════════════════════ POSITIONS */}
+        {tab==="portfolio"&&(()=>{
+          const tSorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
+          const sharesHeld=tSorted.reduce((n,t)=>{
+            if(t.type==="BUY_SHARES")  return n+(parseInt(t.shares)||0);
+            if(t.type==="SELL_SHARES") return n-(parseInt(t.shares)||0);
+            return n;
+          },0);
+          const latestPortVal=(()=>{
+            const pts=tSorted.filter(t=>t.nav_after&&parseFloat(t.nav_after)>0);
+            return pts.length>0?parseFloat(pts.at(-1).nav_after):null;
+          })();
+          const displayNav=parseFloat(port.portfolioValueOverride)||latestPortVal||null;
+          const openCalls=(()=>{
+            const sells=tSorted.filter(t=>t.type==="SELL_CALL"&&t.strike&&t.expiry);
+            const buys =tSorted.filter(t=>(t.type==="BUY_CALL"||t.type==="ROLL")&&t.strike&&t.expiry);
+            return sells.filter(s=>!buys.some(b=>b.strike===s.strike&&b.expiry===s.expiry&&b.date>=s.date))
+              .map(s=>{
+                let liveVal=null,livePnL=null,rollPct=null;
+                if(sig){
+                  const Tr=s.expiry?Math.max((new Date(s.expiry)-new Date())/(365*86400000),0.001):3/365;
+                  if(Tr>0){
+                    liveVal=bsCall(sig.spy,parseFloat(s.strike),Tr,sig.iv);
+                    livePnL=(parseFloat(s.premium)-liveVal)*(parseInt(s.contracts)||0)*100;
+                    rollPct=parseFloat(s.premium)>0?(parseFloat(s.premium)-liveVal)/parseFloat(s.premium):0;
+                  }
+                }
+                return{...s,liveVal,livePnL,rollPct};
+              });
+          })();
+          const hasTrades=tSorted.length>0;
+          const curLev=displayNav&&sharesHeld>0&&sig?(sharesHeld*sig.spy)/displayNav:null;
+          return(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {!hasTrades&&(
+              <Card style={{textAlign:"center",padding:"60px 40px"}}>
+                <div style={{fontSize:32,marginBottom:12}}>📋</div>
+                <div style={{fontFamily:"Georgia,serif",fontSize:18,fontWeight:700,color:C.muted,marginBottom:8}}>
+                  Positions derive from your Trade Log
+                </div>
+                <div style={{fontSize:11,color:C.faint,lineHeight:1.9,maxWidth:440,margin:"0 auto"}}>
+                  Log your trades once — shares held, open calls, live P&L, and leverage all appear here automatically.
+                </div>
+                <button onClick={()=>setTab("tradelog")} style={{marginTop:20,background:C.text,
+                  border:"none",borderRadius:8,color:"#fff",padding:"10px 28px",
+                  fontFamily:F.mono,fontSize:11,cursor:"pointer",letterSpacing:1}}>
+                  GO TO TRADE LOG →
+                </button>
+              </Card>
+            )}
+            {hasTrades&&(
+              <>
+                {/* Account Summary */}
+                <Card style={{padding:0,overflow:"hidden"}}>
+                  <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,
+                    background:C.surface,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:C.text}}>Account Summary</div>
+                    <div style={{fontSize:10,color:C.faint,fontFamily:F.mono}}>Auto-derived from trade log</div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))"}}>
+                    {[
+                      {l:"Portfolio Value",     v:displayNav?fmt$(displayNav):"Log a trade",      c:displayNav?C.text:C.faint, bold:!!displayNav},
+                      {l:"SPY Shares Held",     v:`${sharesHeld.toLocaleString()} shares`,         c:sharesHeld>0?C.text:C.faint},
+                      {l:"Equity Market Value", v:sig&&sharesHeld>0?fmt$(sharesHeld*sig.spy):"—",  c:C.apex},
+                      {l:"Current Leverage",    v:curLev?`${curLev.toFixed(2)}x`:"—",              c:curLev&&sig?.lev&&Math.abs(curLev-sig.lev)>0.1?C.warn:C.apex, bold:true},
+                      {l:"Target Leverage",     v:sig?`${sig.lev}x (${REGIME_NAME[rc]})`:"—",      c:C.muted},
+                      {l:"Rebalance Action",    v:sig&&sharesHeld>0?(sig.sharesDelta===0?"On target":`${sig.sharesDelta>0?"BUY +":"SELL "}${Math.abs(sig.sharesDelta)} shares`):"—", c:sig?.sharesDelta===0?C.apex:C.warn},
+                    ].map(({l,v,c,bold},i)=>(
+                      <div key={l} style={{padding:"14px 16px",
+                        borderRight:i%3!==2?`1px solid ${C.border}`:"none",
+                        borderBottom:`1px solid ${C.border}`}}>
+                        <div style={{fontSize:9,color:C.faint,letterSpacing:1.5,textTransform:"uppercase",fontFamily:F.mono,marginBottom:5}}>{l}</div>
+                        <div style={{fontFamily:"Georgia,serif",fontSize:13,fontWeight:bold?700:500,color:c}}>{v}</div>
+                      </div>
+                    ))}
+                    {/* Margin + override inputs */}
+                    <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,borderRight:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:9,color:C.faint,letterSpacing:1.5,textTransform:"uppercase",fontFamily:F.mono,marginBottom:5}}>Margin Balance ($)</div>
+                      <input type="number" value={port.marginBalance||""} placeholder="From broker"
+                        onChange={e=>setPort(p=>{const n={...p,marginBalance:e.target.value};ss("port",n);return n;})}
+                        style={{width:"100%",boxSizing:"border-box",background:"transparent",border:`1px solid ${C.border}`,
+                          borderRadius:5,padding:"5px 8px",color:C.text,fontFamily:F.mono,fontSize:11,outline:"none"}}/>
+                      <div style={{fontSize:9,color:C.faint,marginTop:3}}>Enter from broker</div>
+                    </div>
+                    <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:9,color:C.faint,letterSpacing:1.5,textTransform:"uppercase",fontFamily:F.mono,marginBottom:5}}>Portfolio Value Override ($)</div>
+                      <input type="number" value={port.portfolioValueOverride||""} placeholder="Auto from trades"
+                        onChange={e=>setPort(p=>{const n={...p,portfolioValueOverride:e.target.value};ss("port",n);return n;})}
+                        style={{width:"100%",boxSizing:"border-box",background:"transparent",border:`1px solid ${C.border}`,
+                          borderRadius:5,padding:"5px 8px",color:C.text,fontFamily:F.mono,fontSize:11,outline:"none"}}/>
+                      <div style={{fontSize:9,color:C.faint,marginTop:3}}>Overrides last logged value</div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Open Short Calls */}
+                <Card style={{padding:0,overflow:"hidden"}}>
+                  <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,background:"#f0ebe2",
+                    display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:C.purple}}>
+                      Open Short Calls
+                      <span style={{fontSize:11,color:C.muted,fontWeight:400,marginLeft:8,fontFamily:F.mono}}>
+                        {openCalls.length} open
+                      </span>
+                    </div>
+                    {!sig&&<div style={{fontSize:10,color:C.faint,fontFamily:F.mono}}>Connect Finnhub for live marks</div>}
+                  </div>
+                  {openCalls.length===0?(
+                    <div style={{padding:"16px 20px",fontSize:11,color:C.faint,fontFamily:F.mono,fontStyle:"italic"}}>
+                      No open calls — log a SELL CALL trade to see positions here
+                    </div>
+                  ):(
+                    <>
+                      <div style={{display:"grid",gridTemplateColumns:"90px 1fr 80px 90px 90px 110px 100px",
+                        padding:"8px 20px",background:C.surface,borderBottom:`1px solid ${C.border}`,
+                        fontSize:9,color:C.faint,letterSpacing:1.5,textTransform:"uppercase",fontFamily:F.mono,gap:8}}>
+                        <span>Sold</span><span>Position</span><span>Contracts</span>
+                        <span style={{textAlign:"right"}}>Premium</span>
+                        <span style={{textAlign:"right"}}>Mark</span>
+                        <span style={{textAlign:"right"}}>P&L</span>
+                        <span style={{textAlign:"right"}}>Roll %</span>
+                      </div>
+                      {openCalls.map((c,i)=>(
+                        <div key={i} style={{display:"grid",gridTemplateColumns:"90px 1fr 80px 90px 90px 110px 100px",
+                          padding:"11px 20px",borderBottom:`1px solid ${C.border}`,
+                          background:i%2===0?"#f0ebe2":C.surface,alignItems:"center",gap:8}}>
+                          <div style={{fontSize:10,color:C.muted,fontFamily:F.mono}}>{fmtDate(c.date)}</div>
+                          <div>
+                            <div style={{fontFamily:"Georgia,serif",fontSize:13,fontWeight:600,color:C.purple}}>
+                              SPY ${c.strike}C
+                            </div>
+                            <div style={{fontSize:10,color:C.faint,fontFamily:F.mono}}>exp {fmtDate(c.expiry)}</div>
+                          </div>
+                          <div style={{fontFamily:F.mono,fontSize:12}}>{c.contracts}</div>
+                          <div style={{textAlign:"right",fontFamily:F.mono,fontSize:12,color:C.apex}}>
+                            ${parseFloat(c.premium).toFixed(2)}
+                          </div>
+                          <div style={{textAlign:"right",fontFamily:F.mono,fontSize:12,color:c.liveVal!=null?C.text:C.faint}}>
+                            {c.liveVal!=null?`$${c.liveVal.toFixed(2)}`:"—"}
+                          </div>
+                          <div style={{textAlign:"right",fontFamily:"Georgia,serif",fontSize:13,fontWeight:600,
+                            color:c.livePnL!=null?(c.livePnL>=0?C.apex:C.danger):C.faint}}>
+                            {c.livePnL!=null?`${c.livePnL>=0?"+":""}$${c.livePnL.toLocaleString("en-US",{maximumFractionDigits:0})}`:"—"}
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            {c.rollPct!=null?(
+                              <span style={{fontFamily:F.mono,fontSize:11,fontWeight:600,
+                                color:c.rollPct>=0.70?C.purple:c.rollPct>=0.50?C.alpha:C.muted,
+                                background:c.rollPct>=0.70?"#f3e8ff":c.rollPct>=0.50?"#fef9c3":"transparent",
+                                borderRadius:4,padding:"2px 6px"}}>
+                                {(c.rollPct*100).toFixed(0)}%{c.rollPct>=0.70?" ⚡":""}
+                              </span>
+                            ):"—"}
+                          </div>
+                        </div>
+                      ))}
+                      {openCalls.some(c=>c.livePnL!=null)&&(
+                        <div style={{padding:"10px 20px",background:"#ede8f5",borderTop:`1px solid #e9d5ff`,
+                          display:"flex",justifyContent:"flex-end",gap:24}}>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:8,color:C.faint,fontFamily:F.mono,marginBottom:2}}>TOTAL PREMIUM</div>
+                            <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:C.apex}}>
+                              ${openCalls.reduce((s,c)=>(parseFloat(c.premium)||0)*(parseInt(c.contracts)||0)*100+s,0)
+                                .toLocaleString("en-US",{maximumFractionDigits:0})}
+                            </div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:8,color:C.faint,fontFamily:F.mono,marginBottom:2}}>TOTAL P&L</div>
+                            <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,
+                              color:openCalls.reduce((s,c)=>(c.livePnL||0)+s,0)>=0?C.apex:C.danger}}>
+                              {(()=>{const t=openCalls.reduce((s,c)=>(c.livePnL||0)+s,0);
+                                return`${t>=0?"+":""}$${t.toLocaleString("en-US",{maximumFractionDigits:0})}`;})()}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Card>
+
+                {/* Strategy Metrics */}
+                {sig&&(
+                  <Card style={{padding:0,overflow:"hidden"}}>
+                    <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,background:C.surface}}>
+                      <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:C.text}}>Live Strategy Metrics</div>
+                    </div>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",minWidth:580,borderCollapse:"collapse"}}>
+                        <thead>
+                          <tr style={{background:C.surface,borderBottom:`1px solid ${C.border}`}}>
+                            {["Regime","Leverage","Adj Delta","Overwrite","Impl. Vol","Blackout"].map(h=>(
+                              <th key={h} style={{padding:"8px 14px",textAlign:"center",
+                                fontSize:9,color:C.faint,fontWeight:600,letterSpacing:1.5,
+                                textTransform:"uppercase",fontFamily:F.mono,whiteSpace:"nowrap"}}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td style={{padding:"12px 14px",textAlign:"center"}}>
+                              <span style={{background:REGIME_BG[rc],border:`1px solid ${REGIME_BORDER[rc]}`,
+                                color:REGIME_TEXT[rc],borderRadius:20,padding:"3px 10px",
+                                fontSize:11,fontFamily:F.mono,fontWeight:600}}>{REGIME_NAME[rc]}</span>
+                            </td>
+                            {[
+                              {v:`${sig.lev}x`,c:REGIME_TEXT[rc]},
+                              {v:`Δ${sig.adjDelta.toFixed(2)}`,c:C.text},
+                              {v:`${(sig.ow*100).toFixed(0)}%`,c:C.text},
+                              {v:`${(sig.iv*100).toFixed(1)}%`,c:C.text},
+                              {v:sig.bo.active?"⛔ ACTIVE":"✓ Clear",c:sig.bo.active?C.warn:C.apex},
+                            ].map(({v,c},i)=>(
+                              <td key={i} style={{padding:"12px 14px",textAlign:"center",fontFamily:F.mono,fontSize:12,color:c}}>{v}</td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                )}
+              </>
+            )}
+          </div>
+          );
+        })()}
+
+        {/* ══════════════════════ TRADE LOG */}
+        {tab==="tradelog"&&(
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:12}}>
+              <div>
+                <div style={{fontFamily:"Georgia,serif",fontSize:18,fontWeight:700,color:C.text}}>Trade Log</div>
+                <div style={{fontSize:11,color:C.faint,marginTop:3,fontFamily:F.mono}}>
+                  {trades.length} entries · source of truth for positions &amp; performance
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[
+                  {type:"SELL_CALL",   label:"+ Sell Call",  color:C.info},
+                  {type:"BUY_CALL",    label:"+ Buy Back",   color:C.purple},
+                  {type:"BUY_SHARES",  label:"+ Buy Shares", color:C.apex},
+                  {type:"SELL_SHARES", label:"+ Sell Shares",color:C.warn},
+                  {type:"DEPOSIT",     label:"+ Deposit",    color:"#1e4d7a"},
+                  {type:"WITHDRAWAL",  label:"+ Withdrawal", color:"#5b21b6"},
+                ].map(({type,label,color})=>(
+                  <button key={type} onClick={()=>prefillFromSig(type)} style={{
+                    background:"#fff",border:`1px solid ${color}`,borderRadius:7,
+                    padding:"6px 12px",fontFamily:F.mono,fontSize:9,cursor:"pointer",
+                    color:color,letterSpacing:0.5,fontWeight:600}}>
+                    {label}
+                  </button>
+                ))}
+                <button onClick={()=>{
+                  setNewTrade({type:"SELL_CALL",date:new Date().toISOString().split("T")[0],
+                    strike:"",expiry:"",premium:"",contracts:"",shares:"",price:"",
+                    amount:"",pnl:"",nav_after:"",notes:""});
+                  setShowAddTrade(true);
+                }} style={{background:C.text,border:`1px solid ${C.text}`,borderRadius:7,
+                  padding:"6px 14px",fontFamily:F.mono,fontSize:9,cursor:"pointer",
+                  color:"#fff",letterSpacing:0.5,fontWeight:600}}>
+                  + ADD ENTRY
+                </button>
+              </div>
+            </div>
+
+            {/* Add form */}
+            {showAddTrade&&(
+              <Card accent={C.info} style={{marginBottom:20}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700}}>New Entry</div>
+                  <button onClick={()=>setShowAddTrade(false)}
+                    style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:20}}>✕</button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:12}}>
+                  <Sel label="Type" value={newTrade.type} onChange={v=>setNT("type",v)} options={TRADE_TYPES}/>
+                  <Inp label="Date" value={newTrade.date} onChange={v=>setNT("date",v)} type="text" placeholder="YYYY-MM-DD"/>
+                  {["SELL_CALL","BUY_CALL","ROLL"].includes(newTrade.type)&&<>
+                    <Inp label="Strike ($)" value={newTrade.strike} onChange={v=>setNT("strike",v)} placeholder="596.00"/>
+                    <Inp label="Expiry (YYYY-MM-DD)" value={newTrade.expiry} onChange={v=>setNT("expiry",v)} type="text" placeholder="2025-03-21"/>
+                    <Inp label="Premium ($/sh)" value={newTrade.premium} onChange={v=>setNT("premium",v)} placeholder="1.85"/>
+                    <Inp label="Contracts" value={newTrade.contracts} onChange={v=>setNT("contracts",v)} placeholder="47"/>
+                  </>}
+                  {["BUY_SHARES","SELL_SHARES"].includes(newTrade.type)&&<>
+                    <Inp label="Shares" value={newTrade.shares} onChange={v=>setNT("shares",v)} placeholder="100"/>
+                    <Inp label="Price ($/sh)" value={newTrade.price} onChange={v=>setNT("price",v)} placeholder="590.00"/>
+                  </>}
+                  {["DEPOSIT","WITHDRAWAL"].includes(newTrade.type)&&
+                    <Inp label={newTrade.type==="DEPOSIT"?"Amount Deposited ($)":"Amount Withdrawn ($)"}
+                      value={newTrade.amount} onChange={v=>setNT("amount",v)} placeholder="500000"
+                      hint="Creates new TWR sub-period"/>
+                  }
+                  {!["DEPOSIT","WITHDRAWAL"].includes(newTrade.type)&&
+                    <Inp label="Realized P&L ($)" value={newTrade.pnl} onChange={v=>setNT("pnl",v)} placeholder="3200"/>
+                  }
+                  <Inp label="Portfolio Value After ($)" value={newTrade.nav_after} onChange={v=>setNT("nav_after",v)}
+                    placeholder="3250000" hint="Updates positions & TWR"/>
+                </div>
+                <div style={{marginTop:12}}>
+                  <Lbl>Notes</Lbl>
+                  <textarea value={newTrade.notes} onChange={e=>setNT("notes",e.target.value)} rows={2}
+                    placeholder={["DEPOSIT","WITHDRAWAL"].includes(newTrade.type)?"e.g. Q1 capital addition":"Context, reasoning, execution notes…"}
+                    style={{width:"100%",boxSizing:"border-box",background:C.bg,border:`1px solid ${C.border}`,
+                      borderRadius:6,padding:"9px 12px",color:C.text,fontFamily:F.mono,
+                      fontSize:11,outline:"none",resize:"vertical",lineHeight:1.6}}/>
+                </div>
+                <div style={{marginTop:12,display:"flex",gap:10}}>
+                  <button onClick={submitTrade} style={{background:C.text,border:"none",borderRadius:8,
+                    color:"#fff",padding:"9px 24px",fontFamily:F.mono,fontSize:11,cursor:"pointer",letterSpacing:1}}>
+                    SAVE ENTRY
+                  </button>
+                  <button onClick={()=>setShowAddTrade(false)} style={{background:C.bg,
+                    border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,
+                    padding:"9px 18px",fontFamily:F.mono,fontSize:11,cursor:"pointer"}}>Cancel</button>
+                </div>
+              </Card>
+            )}
+
+            {trades.length===0?(
+              <Card style={{textAlign:"center",padding:"60px 40px"}}>
+                <div style={{fontSize:28,marginBottom:10}}>📋</div>
+                <div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,color:C.muted,marginBottom:8}}>No entries yet</div>
+                <div style={{fontSize:11,color:C.faint,lineHeight:1.9,maxWidth:460,margin:"0 auto"}}>
+                  Every entry here drives your <b>Positions</b> tab and <b>Performance</b> dashboard automatically.<br/>
+                  Include <b>Portfolio Value After</b> to track your live annualized return.<br/>
+                  Use <b>Deposit</b> and <b>Withdrawal</b> entries to keep your TWR accurate when capital moves in or out.
+                </div>
+              </Card>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {/* Summary strip */}
+                {(()=>{
+                  const totalPnl=trades.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
+                  const deps=trades.filter(t=>t.type==="DEPOSIT").reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+                  const wdls=trades.filter(t=>t.type==="WITHDRAWAL").reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+                  return(
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:8}}>
+                      {[
+                        {l:"Total Entries",     v:`${trades.length}`,c:C.text},
+                        {l:"Realized P&L",      v:`${totalPnl>=0?"+":""}$${totalPnl.toLocaleString("en-US",{maximumFractionDigits:0})}`,c:totalPnl>=0?C.apex:C.danger,acc:totalPnl>=0?C.apex:C.danger},
+                        {l:"Net Capital Flows", v:`${(deps-wdls)>=0?"+":""}$${(deps-wdls).toLocaleString("en-US",{maximumFractionDigits:0})}`,c:"#1e4d7a"},
+                        ...(twr?[{l:"Live Ann. TWR",v:`${twr.annualized>=0?"+":""}${twr.annualized.toFixed(2)}%`,c:twr.annualized>=0?C.apex:C.danger,acc:twr.annualized>=0?C.apex:C.danger}]:[]),
+                      ].map(({l,v,c,acc})=>(
+                        <div key={l} style={{background:C.surface,border:`1px solid ${C.border}`,
+                          borderTop:acc?`3px solid ${acc}`:"none",borderRadius:8,padding:"10px 14px"}}>
+                          <div style={{fontSize:9,color:C.faint,letterSpacing:1.5,textTransform:"uppercase",fontFamily:F.mono,marginBottom:4}}>{l}</div>
+                          <div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,color:c}}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {/* Trade rows — newest first */}
+                {[...trades].sort((a,b)=>b.date.localeCompare(a.date)).map(t=>{
+                  const COLORS={SELL_CALL:C.info,BUY_CALL:C.purple,ROLL:C.purple,
+                    BUY_SHARES:C.apex,SELL_SHARES:C.warn,
+                    DEPOSIT:"#1e4d7a",WITHDRAWAL:"#5b21b6",OTHER:C.muted};
+                  const color=COLORS[t.type]||C.muted;
+                  const pnl=parseFloat(t.pnl);
+                  const isCashFlow=t.type==="DEPOSIT"||t.type==="WITHDRAWAL";
+                  return(
+                    <div key={t.id} style={{background:C.surface,
+                      border:`1px solid ${isCashFlow?color+"30":C.border}`,
+                      borderLeft:`4px solid ${color}`,borderRadius:10,
+                      padding:"13px 18px",display:"flex",gap:14,
+                      alignItems:"flex-start",flexWrap:"wrap"}}>
+                      <div style={{minWidth:90,flexShrink:0}}>
+                        <div style={{fontSize:9,color:C.faint,marginBottom:4,fontFamily:F.mono}}>{fmtDate(t.date)}</div>
+                        <span style={{background:color+"18",border:`1px solid ${color}40`,
+                          color,borderRadius:12,padding:"2px 8px",
+                          fontSize:9,fontWeight:600,fontFamily:F.mono}}>
+                          {t.type.replace(/_/g," ")}
+                        </span>
+                      </div>
+                      <div style={{flex:1,minWidth:180}}>
+                        {isCashFlow&&(
+                          <div style={{fontFamily:"Georgia,serif",fontSize:13,fontWeight:700,color,marginBottom:2}}>
+                            {t.type==="DEPOSIT"?"Capital Deposit":"Capital Withdrawal"}
+                            {t.amount&&<span style={{fontSize:12,fontWeight:400,color:C.muted,marginLeft:8,fontFamily:F.mono}}>
+                              ${parseFloat(t.amount).toLocaleString("en-US",{maximumFractionDigits:0})}
+                            </span>}
+                          </div>
+                        )}
+                        {["SELL_CALL","BUY_CALL","ROLL"].includes(t.type)&&t.strike&&(
+                          <div style={{fontFamily:"Georgia,serif",fontSize:13,fontWeight:600,color:C.text,marginBottom:2}}>
+                            {t.contracts}× SPY ${t.strike}C
+                            {t.expiry&&<span style={{color:C.purple}}> exp {fmtDate(t.expiry)}</span>}
+                            {t.premium&&<span style={{color:C.muted,fontSize:11,fontWeight:400,fontFamily:F.mono}}> @ ${t.premium}/sh</span>}
+                          </div>
+                        )}
+                        {["BUY_SHARES","SELL_SHARES"].includes(t.type)&&t.shares&&(
+                          <div style={{fontFamily:"Georgia,serif",fontSize:13,fontWeight:600,color:C.text,marginBottom:2}}>
+                            {t.shares} SPY shares @ ${t.price}
+                          </div>
+                        )}
+                        {t.notes&&<div style={{fontSize:10,color:C.muted,lineHeight:1.6,fontFamily:F.mono}}>{t.notes}</div>}
+                      </div>
+                      <div style={{display:"flex",gap:18,alignItems:"center",flexShrink:0}}>
+                        {!isNaN(pnl)&&t.pnl!==""&&(
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:8,color:C.faint,letterSpacing:1.5,fontFamily:F.mono,marginBottom:2}}>P&amp;L</div>
+                            <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,
+                              color:pnl>=0?C.apex:C.danger}}>
+                              {pnl>=0?"+":""}${pnl.toLocaleString("en-US",{maximumFractionDigits:0})}
+                            </div>
+                          </div>
+                        )}
+                        {t.nav_after&&(
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:8,color:C.faint,letterSpacing:1.5,fontFamily:F.mono,marginBottom:2}}>PORT. VALUE</div>
+                            <div style={{fontFamily:"Georgia,serif",fontSize:13,fontWeight:600,color:C.text}}>
+                              ${parseFloat(t.nav_after).toLocaleString("en-US",{maximumFractionDigits:0})}
+                            </div>
+                          </div>
+                        )}
+                        <button onClick={()=>deleteTrade(t.id)}
+                          style={{background:"none",border:"none",cursor:"pointer",
+                            color:C.border,fontSize:16,padding:"4px"}} title="Delete">✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════ PERFORMANCE — MORNINGSTAR STYLE */}
+        {/* ══════════════════════ LIVE PERFORMANCE */}
+        {tab==="performance"&&(()=>{
+          // ── derive all live metrics from trade log ──────────────────────────
+          const tradesSorted=[...trades].sort((a,b)=>a.date.localeCompare(b.date));
+          const navPoints=tradesSorted.filter(t=>t.nav_after&&parseFloat(t.nav_after)>0&&t.date)
+            .map(t=>({date:t.date,val:parseFloat(t.nav_after)}));
+          const currentNav=parseFloat(port.portfolioValue)||0;
+          if(navPoints.length>0&&currentNav>0){
+            const last=navPoints.at(-1);
+            if(new Date().toISOString().split("T")[0]>last.date)
+              navPoints.push({date:new Date().toISOString().split("T")[0],val:currentNav});
+          }
+
+          // Call trades for premium/win-rate stats
+          const callTrades=tradesSorted.filter(t=>t.type==="SELL_CALL"||t.type==="BUY_CALL"||t.type==="ROLL");
+          const sellCalls=tradesSorted.filter(t=>t.type==="SELL_CALL");
+          const buyCalls =tradesSorted.filter(t=>t.type==="BUY_CALL"||t.type==="ROLL");
+          const totalPremium=sellCalls.reduce((s,t)=>{
+            const p=parseFloat(t.premium)||0,c=parseInt(t.contracts)||0;
+            return s+p*c*100;
+          },0);
+          const closedPnl=tradesSorted.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
+
+          // Win rate: closed calls where pnl >= 0
+          const closedCalls=tradesSorted.filter(t=>(t.type==="BUY_CALL"||t.type==="ROLL")&&t.pnl!=="");
+          const winRate=closedCalls.length>0?(closedCalls.filter(t=>parseFloat(t.pnl)>=0).length/closedCalls.length*100):null;
+
+          // Monthly P&L
+          const monthlyPnl={};
+          tradesSorted.forEach(t=>{
+            if(!t.date||!t.pnl) return;
+            const mo=t.date.slice(0,7);
+            monthlyPnl[mo]=(monthlyPnl[mo]||0)+(parseFloat(t.pnl)||0);
+          });
+          const months=Object.keys(monthlyPnl).sort();
+
+          // Drawdown from peak
+          let peak=0,dd=0;
+          navPoints.forEach(p=>{if(p.val>peak)peak=p.val; const d=(peak-p.val)/peak*100; if(d>dd)dd=d;});
+          const curDD=peak>0?(peak-currentNav)/peak*100:0;
+
+          // Average premium per sell-call cycle
+          const avgPrem=sellCalls.length>0?totalPremium/sellCalls.length:0;
+
+          const hasData=navPoints.length>=2;
+          const hasTrades=tradesSorted.length>0;
+
+          // ── NAV chart SVG ──
+          const NavChart=()=>{
+            if(navPoints.length<2) return null;
+            const CW=600,CH=160,PL=60,PR=20,PT=12,PB=20;
+            const IW=CW-PL-PR,IH=CH-PT-PB,n=navPoints.length;
+            const vals=navPoints.map(p=>p.val);
+            const mn=Math.min(...vals)*0.97,mx=Math.max(...vals)*1.02;
+            const cx=i=>PL+(i/(n-1))*IW;
+            const cy=v=>PT+IH-((v-mn)/(mx-mn))*IH;
+            const line=navPoints.map((p,i)=>`${i===0?"M":"L"}${cx(i).toFixed(1)},${cy(p.val).toFixed(1)}`).join(" ");
+            const area=line+` L${cx(n-1)},${PT+IH} L${PL},${PT+IH} Z`;
+            return(
+              <svg viewBox={`0 0 ${CW} ${CH}`} style={{width:"100%",display:"block"}}>
+                <defs>
+                  <linearGradient id="navGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={C.apex} stopOpacity="0.2"/>
+                    <stop offset="100%" stopColor={C.apex} stopOpacity="0"/>
+                  </linearGradient>
+                </defs>
+                {[mn+(mx-mn)*0.25,mn+(mx-mn)*0.5,mn+(mx-mn)*0.75,mx].map((v,i)=>(
+                  <g key={i}>
+                    <line x1={PL} y1={cy(v)} x2={PL+IW} y2={cy(v)} stroke={C.border} strokeWidth="0.6"/>
+                    <text x={PL-4} y={cy(v)+3} textAnchor="end" fontSize="8" fill={C.faint}
+                      fontFamily="Inter,sans-serif">${(v/1e6).toFixed(2)}M</text>
+                  </g>
+                ))}
+                <line x1={PL} y1={PT+IH} x2={PL+IW} y2={PT+IH} stroke={C.border} strokeWidth="1"/>
+                {navPoints.filter((_,i)=>i===0||i===n-1||(n>4&&i%Math.floor(n/4)===0)).map((p,i)=>(
+                  <text key={i} x={cx(navPoints.indexOf(p))} y={PT+IH+14}
+                    textAnchor="middle" fontSize="7.5" fill={C.faint}
+                    fontFamily="Inter,sans-serif">{fmtDate(p.date)}</text>
+                ))}
+                <path d={area} fill="url(#navGrad)"/>
+                <path d={line} fill="none" stroke={C.apex} strokeWidth="2.5"/>
+                {navPoints.map((p,i)=>(
+                  i===0||i===n-1?<circle key={i} cx={cx(i)} cy={cy(p.val)} r="3.5" fill={C.apex}/>:null
+                ))}
+              </svg>
+            );
+          };
+
+          // Monthly bar chart
+          const MonthlyBars=()=>{
+            if(months.length===0) return null;
+            const vals=months.map(m=>monthlyPnl[m]);
+            const mx2=Math.max(...vals.map(Math.abs),1);
+            const bw=Math.min(40,(500/months.length)-4);
+            const H=100,mid=50,W=months.length*(bw+6);
+            const sc=v=>(Math.abs(v)/mx2)*(mid-8);
+            return(
+              <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",maxHeight:H,display:"block"}}>
+                <line x1="0" y1={mid} x2={W} y2={mid} stroke={C.border} strokeWidth="1"/>
+                {months.map((mo,i)=>{
+                  const v=monthlyPnl[mo],h=sc(v),x=i*(bw+6);
+                  return(
+                    <g key={mo}>
+                      <rect x={x} y={v>=0?mid-h:mid} width={bw} height={h}
+                        fill={v>=0?C.apex:C.danger} opacity="0.8" rx="1"/>
+                      {months.length<=12&&<text x={x+bw/2} y={H-1} textAnchor="middle"
+                        fontSize="7" fill={C.faint} fontFamily="Inter,sans-serif">
+                        {mo.slice(5)}
+                      </text>}
+                    </g>
+                  );
+                })}
+              </svg>
+            );
+          };
+
+          return(
+          <div>
+            {/* Header */}
+            <div style={{marginBottom:20}}>
+              <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:C.text}}>Live Performance</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                {hasData
+                  ? `Tracking since ${fmtDate(navPoints[0].date)} · ${trades.length} trade${trades.length!==1?"s":""} logged`
+                  : "Log trades in the Trade Log tab to activate your live performance dashboard"}
+              </div>
+            </div>
+
+            {!hasTrades&&(
+              <Card style={{textAlign:"center",padding:"60px 40px"}}>
+                <div style={{fontSize:40,marginBottom:16}}>📈</div>
+                <div style={{fontFamily:"Georgia,serif",fontSize:18,fontWeight:700,color:C.muted,marginBottom:10}}>
+                  Your Live Scoreboard
+                </div>
+                <div style={{fontSize:12,color:C.faint,lineHeight:1.9,maxWidth:460,margin:"0 auto"}}>
+                  This tab tracks your <b>actual real-money performance</b> — not the backtest.<br/>
+                  Start logging trades in the <b>Trade Log</b> tab with a portfolio value after each trade.<br/>
+                  Your live NAV chart, TWR vs SPY, premium income, and drawdown tracker will appear here automatically.
+                </div>
+                <button onClick={()=>setTab("tradelog")} style={{marginTop:24,background:C.text,
+                  border:"none",borderRadius:8,color:"#fff",padding:"10px 28px",
+                  fontFamily:F.mono,fontSize:11,cursor:"pointer",letterSpacing:1}}>
+                  GO TO TRADE LOG →
+                </button>
+              </Card>
+            )}
+
+            {hasTrades&&(
+              <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+                {/* ── KEY STATS ROW ── */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12}}>
+                  {twr&&<div style={{background:C.surface,border:`1px solid ${C.border}`,
+                    borderTop:`3px solid ${twr.annualized>=0?C.apex:C.danger}`,borderRadius:10,padding:"14px 16px"}}>
+                    <div style={{fontSize:9,color:C.faint,letterSpacing:2,textTransform:"uppercase",fontFamily:F.mono,marginBottom:4}}>Live Ann. Return (TWR)</div>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,
+                      color:twr.annualized>=0?C.apex:C.danger,lineHeight:1}}>
+                      {twr.annualized>=0?"+":""}{twr.annualized.toFixed(2)}%
+                    </div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:4,fontFamily:F.mono}}>{twr.years.toFixed(1)} yrs tracked</div>
+                  </div>}
+                  {twr&&mkt&&(()=>{
+                    // Rough SPY return over same period using annual data
+                    const spyAnn=PERIODS.find(p=>p.label==="1Y")?.spy.ann||0;
+                    const alpha=twr.annualized-spyAnn;
+                    return(
+                      <div style={{background:C.surface,border:`1px solid ${C.border}`,
+                        borderTop:`3px solid ${alpha>=0?C.apex:C.warn}`,borderRadius:10,padding:"14px 16px"}}>
+                        <div style={{fontSize:9,color:C.faint,letterSpacing:2,textTransform:"uppercase",fontFamily:F.mono,marginBottom:4}}>vs. SPY (approx)</div>
+                        <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,
+                          color:alpha>=0?C.apex:C.warn,lineHeight:1}}>
+                          {alpha>=0?"+":""}{alpha.toFixed(2)}pp
+                        </div>
+                        <div style={{fontSize:10,color:C.muted,marginTop:4,fontFamily:F.mono}}>annualized alpha</div>
+                      </div>
+                    );
+                  })()}
+                  <div style={{background:C.surface,border:`1px solid ${C.border}`,
+                    borderTop:`3px solid ${C.apex}`,borderRadius:10,padding:"14px 16px"}}>
+                    <div style={{fontSize:9,color:C.faint,letterSpacing:2,textTransform:"uppercase",fontFamily:F.mono,marginBottom:4}}>Total Premium Collected</div>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:C.apex,lineHeight:1}}>
+                      ${totalPremium.toLocaleString("en-US",{maximumFractionDigits:0})}
+                    </div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:4,fontFamily:F.mono}}>{sellCalls.length} call{sellCalls.length!==1?"s":""} sold</div>
+                  </div>
+                  {avgPrem>0&&<div style={{background:C.surface,border:`1px solid ${C.border}`,
+                    borderRadius:10,padding:"14px 16px"}}>
+                    <div style={{fontSize:9,color:C.faint,letterSpacing:2,textTransform:"uppercase",fontFamily:F.mono,marginBottom:4}}>Avg Premium / Cycle</div>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:C.text,lineHeight:1}}>
+                      ${avgPrem.toLocaleString("en-US",{maximumFractionDigits:0})}
+                    </div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:4,fontFamily:F.mono}}>per sell-call trade</div>
+                  </div>}
+                  {winRate!==null&&<div style={{background:C.surface,border:`1px solid ${C.border}`,
+                    borderTop:`3px solid ${winRate>=70?C.apex:winRate>=50?C.alpha:C.warn}`,borderRadius:10,padding:"14px 16px"}}>
+                    <div style={{fontSize:9,color:C.faint,letterSpacing:2,textTransform:"uppercase",fontFamily:F.mono,marginBottom:4}}>Call Win Rate</div>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,
+                      color:winRate>=70?C.apex:winRate>=50?C.alpha:C.warn,lineHeight:1}}>
+                      {winRate.toFixed(0)}%
+                    </div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:4,fontFamily:F.mono}}>
+                      {closedCalls.filter(t=>parseFloat(t.pnl)>=0).length}/{closedCalls.length} closed profitable
+                    </div>
+                  </div>}
+                  <div style={{background:C.surface,border:`1px solid ${C.border}`,
+                    borderTop:`3px solid ${closedPnl>=0?C.apex:C.danger}`,borderRadius:10,padding:"14px 16px"}}>
+                    <div style={{fontSize:9,color:C.faint,letterSpacing:2,textTransform:"uppercase",fontFamily:F.mono,marginBottom:4}}>Realized P&amp;L</div>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,
+                      color:closedPnl>=0?C.apex:C.danger,lineHeight:1}}>
+                      {closedPnl>=0?"+":""}${closedPnl.toLocaleString("en-US",{maximumFractionDigits:0})}
+                    </div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:4,fontFamily:F.mono}}>total logged P&L</div>
+                  </div>
+                  {peak>0&&<div style={{background:C.surface,border:`1px solid ${C.border}`,
+                    borderTop:`3px solid ${curDD<5?C.apex:curDD<15?C.alpha:C.danger}`,borderRadius:10,padding:"14px 16px"}}>
+                    <div style={{fontSize:9,color:C.faint,letterSpacing:2,textTransform:"uppercase",fontFamily:F.mono,marginBottom:4}}>Current Drawdown</div>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,
+                      color:curDD<5?C.apex:curDD<15?C.alpha:C.danger,lineHeight:1}}>
+                      -{curDD.toFixed(1)}%
+                    </div>
+                    <div style={{fontSize:10,color:C.muted,marginTop:4,fontFamily:F.mono}}>
+                      Max: -{dd.toFixed(1)}% · Peak: ${(peak/1e6).toFixed(2)}M
+                    </div>
+                  </div>}
+                </div>
+
+                {/* ── NAV CHART ── */}
+                {navPoints.length>=2&&(
+                  <Card accent={C.apex}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                      <div>
+                        <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:C.text}}>Portfolio Value Over Time</div>
+                        <div style={{fontSize:10,color:C.faint,marginTop:2,fontFamily:F.mono}}>From logged trade entries</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontFamily:"Georgia,serif",fontSize:18,fontWeight:700,color:C.apex}}>
+                          ${(currentNav/1e6).toFixed(3)}M
+                        </div>
+                        <div style={{fontSize:10,color:C.faint,fontFamily:F.mono}}>current</div>
+                      </div>
+                    </div>
+                    <NavChart/>
+                  </Card>
+                )}
+
+                {/* ── MONTHLY P&L ── */}
+                {months.length>0&&(
+                  <Card>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                      <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:C.text}}>Monthly P&amp;L</div>
+                      <div style={{display:"flex",gap:14,fontSize:10,fontFamily:F.mono}}>
+                        <span style={{color:C.apex}}>■ Profit</span>
+                        <span style={{color:C.danger}}>■ Loss</span>
+                      </div>
+                    </div>
+                    <MonthlyBars/>
+                  </Card>
+                )}
+
+                {/* ── TRADE SUMMARY TABLE ── */}
+                <Card style={{padding:0,overflow:"hidden"}}>
+                  <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,background:C.surface}}>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:C.text}}>Trade Summary</div>
+                  </div>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,fontFamily:F.mono}}>
+                      <thead>
+                        <tr style={{background:C.surface,borderBottom:`1px solid ${C.border}`}}>
+                          {["Date","Type","Details","P&L","Port. Value After"].map((h,i)=>(
+                            <th key={h} style={{padding:"8px 14px",textAlign:i>=3?"right":"left",
+                              fontSize:9,color:C.faint,fontWeight:600,letterSpacing:1.5,
+                              textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...trades].sort((a,b)=>b.date.localeCompare(a.date)).map((t,i)=>{
+                          const pnl=parseFloat(t.pnl);
+                          const COLORS={SELL_CALL:C.info,BUY_CALL:C.purple,ROLL:C.purple,
+                            BUY_SHARES:C.apex,SELL_SHARES:C.warn,OTHER:C.muted};
+                          const tc=COLORS[t.type]||C.muted;
+                          const detail=(t.type==="SELL_CALL"||t.type==="BUY_CALL"||t.type==="ROLL")&&t.strike
+                            ?`${t.contracts}× $${t.strike}C exp ${fmtDate(t.expiry)}`
+                            :(t.type==="BUY_SHARES"||t.type==="SELL_SHARES")&&t.shares
+                            ?`${t.shares} shares @ $${t.price}`
+                            :t.notes||"—";
+                          return(
+                            <tr key={t.id||i} style={{borderBottom:`1px solid #f1f5f9`,
+                              background:i%2===0?"#f0ebe2":C.surface}}>
+                              <td style={{padding:"9px 14px",color:C.muted,fontSize:11}}>{fmtDate(t.date)}</td>
+                              <td style={{padding:"9px 14px"}}>
+                                <span style={{background:tc+"18",border:`1px solid ${tc}40`,
+                                  color:tc,borderRadius:12,padding:"2px 8px",
+                                  fontSize:9,fontWeight:600}}>
+                                  {t.type.replace(/_/g," ")}
+                                </span>
+                              </td>
+                              <td style={{padding:"9px 14px",fontSize:11,color:C.muted,maxWidth:200}}>{detail}</td>
+                              <td style={{padding:"9px 14px",textAlign:"right"}}>
+                                {!isNaN(pnl)&&t.pnl!==""?(
+                                  <span style={{fontFamily:"Georgia,serif",fontWeight:600,
+                                    color:pnl>=0?C.apex:C.danger}}>
+                                    {pnl>=0?"+":""}${pnl.toLocaleString("en-US",{maximumFractionDigits:0})}
+                                  </span>
+                                ):"—"}
+                              </td>
+                              <td style={{padding:"9px 14px",textAlign:"right",color:C.muted,fontSize:11}}>
+                                {t.nav_after?`$${parseFloat(t.nav_after).toLocaleString("en-US",{maximumFractionDigits:0})}`:"—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+              </div>
+            )}
+          </div>
+          );
+        })()}
+
+        {tab==="fundprofile"&&(()=>{
+          const WP={
+            serif:"'Lora',Georgia,serif", sans:"'Inter',-apple-system,sans-serif",
+            green:"#006633",greenL:"#e8f4ed",navy:"#003399",navyL:"#e8eef8",
+            gold:"#8b6914",goldL:"#fdf8e8",warn:"#c8500a",neg:"#990000",
+            hdr:"#1c2b1e",hdrSub:"#a8c4ad",hdrLbl:"#7a9f80",hdrTxt:"#d4e8d6",
+            border:"#e0ddd8",borderL:"#ede9e4",bg:"#f7f7f5",muted:"#5c5c5c",faint:"#999",
+          };
+          const WPerf=[
+            {label:"YTD", apex:-0.6,  spy:-1.1},
+            {label:"1Y",  apex:36.75, spy:21.31},
+            {label:"3Y",  apex:31.13, spy:20.59},
+            {label:"5Y",  apex:19.02, spy:11.43},
+            {label:"7Y",  apex:18.60, spy:12.10},
+            {label:"10Y", apex:20.25, spy:12.80},
+            {label:"15Y", apex:17.88, spy:11.62},
+            {label:"Max", apex:15.05, spy:6.46},
+          ];
+          const WRisk=[
+            {label:"1Y",  apexS:1.734,spyS:0.899,apexDD:-7.0, spyDD:-13.7,apex10k:13672, spy10k:12130},
+            {label:"3Y",  apexS:1.376,spyS:1.061,apexDD:-15.1,spyDD:-18.8,apex10k:22518, spy10k:17521},
+            {label:"5Y",  apexS:0.731,spyS:0.386,apexDD:-23.5,spyDD:-25.3,apex10k:23878, spy10k:17176},
+            {label:"10Y", apexS:0.768,spyS:0.444,apexDD:-28.1,spyDD:-34.6,apex10k:63185, spy10k:33337},
+            {label:"Max", apexS:0.516,spyS:0.077,apexDD:-41.0,spyDD:-56.5,apex10k:330000,spy10k:49069},
+          ];
+          const sgn=(v,d=2)=>(v>=0?"+":"")+v.toFixed(d);
+          const sc=v=>v>=0?WP.green:WP.neg;
+          const WSection=({title,children})=>(
+            <div style={{marginBottom:28}}>
+              <div style={{fontFamily:WP.serif,fontSize:15,fontWeight:700,color:"#1a1a1a",
+                paddingBottom:8,borderBottom:`2px solid ${WP.border}`,marginBottom:14}}>
+                {title}
+              </div>
+              {children}
+            </div>
+          );
+          const WTable=({headers,rows})=>(
+            <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+              <table style={{width:"100%",minWidth:500,borderCollapse:"collapse",fontSize:11,fontFamily:WP.sans}}>
+                <thead>
+                  <tr style={{background:WP.bg,borderBottom:`2px solid ${WP.border}`}}>
+                    {headers.map((h,i)=>(
+                      <th key={i} style={{padding:"8px 10px",textAlign:i===0?"left":"right",
+                        fontSize:10,color:WP.faint,fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row,ri)=>(
+                    <tr key={ri} style={{borderBottom:`1px solid ${WP.borderL}`,
+                      background:ri%2===0?"#fff":WP.bg}}>
+                      {row.map((cell,ci)=>(
+                        <td key={ci} style={{padding:"8px 10px",
+                          textAlign:ci===0?"left":"right",
+                          color:typeof cell==="object"?cell.color:"#1a1a1a",
+                          fontWeight:typeof cell==="object"&&cell.bold?600:400,
+                          fontFamily:typeof cell==="object"&&cell.serif?WP.serif:WP.sans,
+                          whiteSpace:"nowrap"}}>
+                          {typeof cell==="object"?cell.v:cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+
+          // Growth chart SVG
+          const wpCurves=(()=>{
+            let av=10000,sv=10000;
+            const a=[{yr:1999,v:10000}],s=[{yr:1999,v:10000}];
+            for(const d of ANNUAL){av*=(1+d.apex/100);sv*=(1+d.spy/100);
+              a.push({yr:d.yr,v:Math.round(av)});s.push({yr:d.yr,v:Math.round(sv)});}
+            // 20-year view rebased to $10K at 2005
+            const startIdx=a.findIndex(d=>d.yr===2005);
+            const apexBase=a[startIdx].v, spyBase=s[startIdx].v;
+            const apex20=a.slice(startIdx).map(d=>({yr:d.yr,v:Math.round(d.v/apexBase*10000)}));
+            const spy20= s.slice(startIdx).map(d=>({yr:d.yr,v:Math.round(d.v/spyBase*10000)}));
+            return{apex:apex20,spy:spy20};
+          })();
+          const WGrowthChart=()=>{
+            const CW=680,CH=220,PL=54,PR=68,PT=20,PB=30;
+            const IW=CW-PL-PR,IH=CH-PT-PB;
+            const n=wpCurves.apex.length;
+            // ── LOG SCALE ──
+            const logMin=Math.log10(9200);   // just below $10K start
+            const logMax=Math.log10(280000); // just above ~$237K APEX end
+            const cx=i=>PL+(i/(n-1))*IW;
+            const cy=v=>PT+IH-((Math.log10(Math.max(v,1))-logMin)/(logMax-logMin))*IH;
+            const yTicks=[10000,20000,50000,100000,200000];
+            const xYears=[2005,2010,2015,2020,2026];
+            const aLine=wpCurves.apex.map((d,i)=>`${i===0?"M":"L"}${cx(i).toFixed(1)},${cy(d.v).toFixed(1)}`).join(" ");
+            const sLine=wpCurves.spy.map((d,i) =>`${i===0?"M":"L"}${cx(i).toFixed(1)},${cy(d.v).toFixed(1)}`).join(" ");
+            const aArea=aLine+` L${cx(n-1)},${PT+IH} L${PL},${PT+IH} Z`;
+            const sArea=sLine+` L${cx(n-1)},${PT+IH} L${PL},${PT+IH} Z`;
+            return(
+              <svg viewBox={`0 0 ${CW} ${CH}`} style={{width:"100%",display:"block"}}>
+                <defs>
+                  <linearGradient id="wpag" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={WP.green} stopOpacity="0.15"/>
+                    <stop offset="100%" stopColor={WP.green} stopOpacity="0"/>
+                  </linearGradient>
+                  <linearGradient id="wpsg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={WP.navy} stopOpacity="0.08"/>
+                    <stop offset="100%" stopColor={WP.navy} stopOpacity="0"/>
+                  </linearGradient>
+                  <clipPath id="chartClip">
+                    <rect x={PL} y={PT} width={IW} height={IH}/>
+                  </clipPath>
+                </defs>
+
+                {/* Y-axis grid + labels */}
+                {yTicks.map(v=>{
+                  const y=cy(v);
+                  const lbl=v>=100000?`$${(v/1000).toFixed(0)}K`:`$${(v/1000).toFixed(0)}K`;
+                  return(
+                    <g key={v}>
+                      <line x1={PL} y1={y} x2={PL+IW} y2={y}
+                        stroke={v===10000?WP.border:"#e8e8e8"} strokeWidth={v===10000?"1":"0.6"}/>
+                      <text x={PL-5} y={y+3} textAnchor="end" fontSize="8"
+                        fill={WP.faint} fontFamily="Inter,sans-serif">{lbl}</text>
+                    </g>
+                  );
+                })}
+
+                {/* X-axis year labels + vertical guides */}
+                {xYears.map(yr=>{
+                  const idx=wpCurves.apex.findIndex(d=>d.yr===yr);
+                  if(idx<0) return null;
+                  const x=cx(idx);
+                  return(
+                    <g key={yr}>
+                      <line x1={x} y1={PT} x2={x} y2={PT+IH}
+                        stroke={WP.borderL} strokeWidth="0.5" strokeDasharray="3 3"/>
+                      <text x={x} y={PT+IH+18} textAnchor="middle"
+                        fontSize="8.5" fill={WP.muted} fontFamily="Inter,sans-serif">{yr}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Axes */}
+                <line x1={PL} y1={PT+IH} x2={PL+IW} y2={PT+IH} stroke={WP.border} strokeWidth="1.5"/>
+                <line x1={PL} y1={PT} x2={PL} y2={PT+IH} stroke={WP.border} strokeWidth="1"/>
+
+                {/* Area fills (clipped) */}
+                <g clipPath="url(#chartClip)">
+                  <path d={sArea} fill="url(#wpsg)"/>
+                  <path d={aArea} fill="url(#wpag)"/>
+                </g>
+
+                {/* Lines */}
+                <path d={sLine} fill="none" stroke={WP.navy}
+                  strokeWidth="1.8" strokeDasharray="6 3" opacity="0.8"/>
+                <path d={aLine} fill="none" stroke={WP.green} strokeWidth="2.5"/>
+
+                {/* End-point dots + labels */}
+                <circle cx={cx(n-1)} cy={cy(wpCurves.apex.at(-1).v)} r="3.5"
+                  fill={WP.green}/>
+                <text x={cx(n-1)+7} y={cy(wpCurves.apex.at(-1).v)+4}
+                  fontSize="9" fill={WP.green} fontFamily="Inter,sans-serif" fontWeight="700">
+                  ${Math.round(wpCurves.apex.at(-1).v/1000)}K
+                </text>
+                <circle cx={cx(n-1)} cy={cy(wpCurves.spy.at(-1).v)} r="3"
+                  fill={WP.navy} opacity="0.8"/>
+                <text x={cx(n-1)+7} y={cy(wpCurves.spy.at(-1).v)+4}
+                  fontSize="9" fill={WP.navy} fontFamily="Inter,sans-serif">$49K</text>
+
+                {/* Log scale label */}
+                <text x={PL+IW} y={PT+10} textAnchor="end"
+                  fontSize="7.5" fill={WP.faint} fontFamily="Inter,sans-serif"
+                  fontStyle="italic">log scale</text>
+              </svg>
+            );
+          };
+
+          return(
+            <div style={{background:WP.bg,minHeight:"100vh",fontFamily:WP.sans}}>
+
+              {/* ── MASTHEAD ── */}
+              <div style={{background:WP.hdr,padding:"24px 28px 20px",
+                borderBottom:"3px solid #2d4a32",marginBottom:24}}>
+                <div style={{maxWidth:900,margin:"0 auto"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:5}}>
+                    <div style={{width:50,height:50,borderRadius:10,overflow:"hidden",
+                      background:"transparent",flexShrink:0}}>
+                      <img src={APEX_LOGO} alt="APEX" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    </div>
+                    <div style={{fontFamily:WP.serif,fontSize:22,fontWeight:700,
+                      color:"#fff",lineHeight:1.2}}>
+                      APEX Dynamic SPY Strategy
+                    </div>
+                  </div>
+                  <div style={{fontSize:11,color:WP.hdrSub,marginBottom:12}}>
+                    $APEX · Systematic Covered Call Overlay · Taxable Account · March 2026
+                  </div>
+                  <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:16}}>
+                    {[["Strategy","Covered Call"],["Underlying","SPY"],
+                      ["Inception","Jan 2000"],["Account","Taxable"],["Version","v2 Dynamic"]
+                    ].map(([l,v])=>(
+                      <div key={l} style={{fontSize:10}}>
+                        <span style={{color:WP.hdrLbl}}>{l}: </span>
+                        <span style={{color:WP.hdrTxt,fontWeight:500}}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Metrics strip */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",
+                    gap:1,background:"rgba(255,255,255,0.08)",borderRadius:3,overflow:"hidden"}}>
+                    {[
+                      ["26-YR ANN. RETURN","15.05%","vs. SPY 6.46%","#6fcf8f"],
+                      ["SHARPE RATIO","0.516","vs. SPY 0.077","#6fcf8f"],
+                      ["MAX DRAWDOWN","-41.0%","vs. SPY -56.5%","#f5c842"],
+                      ["FINAL VALUE ($3.2M)","$112.7M","+$63.6M vs. B&H","#6fcf8f"],
+                      ["ANNUAL ALPHA","+8.59%","annualized","#f5c842"],
+                    ].map(([l,v,sub,vc])=>(
+                      <div key={l} style={{padding:"10px 12px",background:"rgba(0,0,0,0.15)"}}>
+                        <div style={{fontSize:8,color:WP.hdrLbl,letterSpacing:0.5,
+                          marginBottom:3,textTransform:"uppercase",lineHeight:1.3}}>{l}</div>
+                        <div style={{fontFamily:WP.serif,fontSize:16,fontWeight:700,
+                          color:vc,lineHeight:1}}>{v}</div>
+                        <div style={{fontSize:8,color:WP.hdrLbl,marginTop:2}}>{sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{maxWidth:900,margin:"0 auto",padding:"0 24px 48px"}}>
+
+                {/* ── PERFORMANCE ── */}
+                <WSection title="Performance">
+                  {/* Growth chart */}
+                  <div style={{background:"#fff",border:`1px solid ${WP.border}`,
+                    borderRadius:3,padding:"16px 18px",marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",
+                      alignItems:"flex-end",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                      <div style={{fontFamily:WP.serif,fontSize:13,fontWeight:700,color:"#1a1a1a"}}>
+                        Growth of $10,000 — 2005 to 2026 (20 Years)
+                      </div>
+                      <div style={{display:"flex",gap:20}}>
+                        {[[WP.green,false,"APEX Dynamic SPY","$330,000"],
+                          [WP.navy,true,"SPY (Benchmark)","$49,069"]].map(([color,dash,label,val])=>(
+                          <div key={label} style={{display:"flex",alignItems:"center",gap:7}}>
+                            <svg width="22" height="8">
+                              <line x1="0" y1="4" x2="22" y2="4" stroke={color}
+                                strokeWidth={dash?"1.5":"2.5"} strokeDasharray={dash?"5 3":"none"}/>
+                            </svg>
+                            <div>
+                              <div style={{fontSize:9,color:WP.muted}}>{label}</div>
+                              <div style={{fontFamily:WP.serif,fontSize:13,fontWeight:700,color}}>{val}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                      <div style={{minWidth:500}}><WGrowthChart/></div>
+                    </div>
+                  </div>
+
+                  {/* ── CRISIS PERFORMANCE TABLE ── */}
+                  <div style={{background:"#fff",border:`1px solid ${WP.border}`,
+                    borderRadius:3,overflow:"hidden",marginBottom:14}}>
+                    <div style={{padding:"10px 14px",borderBottom:`1px solid ${WP.border}`,
+                      background:WP.bg,display:"flex",alignItems:"baseline",gap:10}}>
+                      <span style={{fontFamily:WP.serif,fontSize:13,fontWeight:700}}>Crisis Period Performance</span>
+                      <span style={{fontSize:10,color:WP.faint}}>How APEX held up in every major downturn</span>
+                    </div>
+                    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                      <table style={{width:"100%",minWidth:480,borderCollapse:"collapse",
+                        fontSize:11,fontFamily:WP.sans}}>
+                        <thead>
+                          <tr style={{background:WP.bg,borderBottom:`1px solid ${WP.border}`}}>
+                            {["Period","APEX Ann.","SPY Ann.","Alpha","APEX Max DD","SPY Max DD","Notes"].map((h,i)=>(
+                              <th key={h} style={{padding:"8px 12px",textAlign:i===0?"left":"right",
+                                fontSize:10,color:WP.faint,fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            {period:"Dot-com (2000–02)",  apex:-2.1,  spy:-18.3, alpha:16.2, apexDD:-14.3, spyDD:-49.1, note:"Regime cuts saved capital"},
+                            {period:"Recovery (2003–07)", apex:12.5,  spy:9.9,   alpha:2.6,  apexDD:-16.5, spyDD:-14.0, note:"Full bull participation"},
+                            {period:"GFC (2007–09)",      apex:-15.0, spy:-35.8, alpha:20.8, apexDD:-26.4, spyDD:-56.8, note:"Bear regime → 0.50x"},
+                            {period:"Post-GFC (2010–19)", apex:19.5,  spy:13.1,  alpha:6.4,  apexDD:-22.2, spyDD:-19.4, note:"Covered calls compound"},
+                            {period:"COVID (2020)",       apex:31.0,  spy:15.2,  alpha:15.8, apexDD:-18.4, spyDD:-33.9, note:"VIX spike = premium surge"},
+                            {period:"Recent (2021–26)",   apex:22.3,  spy:12.6,  alpha:9.7,  apexDD:-21.4, spyDD:-24.5, note:"Consistent outperformance"},
+                          ].map(({period,apex,spy,alpha,apexDD,spyDD,note},ri)=>(
+                            <tr key={period} style={{borderBottom:`1px solid ${WP.borderL}`,
+                              background:ri%2===0?"#fff":WP.bg}}>
+                              <td style={{padding:"9px 12px",fontWeight:600,fontSize:11,color:"#1a1a1a",whiteSpace:"nowrap"}}>{period}</td>
+                              <td style={{padding:"9px 12px",textAlign:"right"}}>
+                                <span style={{fontFamily:WP.serif,fontSize:12,fontWeight:600,
+                                  color:apex>=0?WP.green:WP.neg}}>{apex>=0?"+":""}{apex.toFixed(1)}%</span>
+                              </td>
+                              <td style={{padding:"9px 12px",textAlign:"right"}}>
+                                <span style={{fontFamily:WP.serif,fontSize:12,
+                                  color:spy>=0?WP.navy:WP.warn}}>{spy>=0?"+":""}{spy.toFixed(1)}%</span>
+                              </td>
+                              <td style={{padding:"9px 12px",textAlign:"right"}}>
+                                <span style={{fontFamily:WP.serif,fontSize:12,fontWeight:700,
+                                  color:alpha>=0?WP.gold:WP.neg}}>{alpha>=0?"+":""}{alpha.toFixed(1)}pp</span>
+                              </td>
+                              <td style={{padding:"9px 12px",textAlign:"right"}}>
+                                <span style={{fontFamily:WP.serif,fontSize:11,color:WP.warn}}>{apexDD.toFixed(1)}%</span>
+                              </td>
+                              <td style={{padding:"9px 12px",textAlign:"right"}}>
+                                <span style={{fontFamily:WP.serif,fontSize:11,color:WP.neg}}>{spyDD.toFixed(1)}%</span>
+                              </td>
+                              <td style={{padding:"9px 12px",textAlign:"right",fontSize:10,color:WP.faint,fontStyle:"italic"}}>{note}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Trailing Returns */}
+                  <div style={{background:"#fff",border:`1px solid ${WP.border}`,
+                    borderRadius:3,overflow:"hidden",marginBottom:14}}>
+                    <div style={{padding:"10px 14px",borderBottom:`1px solid ${WP.border}`,
+                      background:WP.bg,display:"flex",alignItems:"baseline",gap:10}}>
+                      <span style={{fontFamily:WP.serif,fontSize:13,fontWeight:700}}>Trailing Returns</span>
+                      <span style={{fontSize:10,color:WP.faint}}>Annualized · as of March 2026</span>
+                    </div>
+                    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                      <table style={{width:"100%",minWidth:560,borderCollapse:"collapse",
+                        fontSize:11,fontFamily:WP.sans}}>
+                        <thead>
+                          <tr style={{background:WP.bg,borderBottom:`1px solid ${WP.border}`}}>
+                            <th style={{padding:"8px 14px",textAlign:"left",fontSize:10,
+                              color:WP.faint,fontWeight:600,width:180}}>Investment</th>
+                            {WPerf.map(p=>(
+                              <th key={p.label} style={{padding:"8px 10px",textAlign:"right",
+                                fontSize:10,color:WP.faint,fontWeight:600,minWidth:52,whiteSpace:"nowrap"}}>{p.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            {label:"APEX Dynamic SPY",sub:"Covered call overlay",key:"apex",color:WP.green},
+                            {label:"SPY (Benchmark)",sub:"SPDR S&P 500 ETF",    key:"spy", color:WP.navy},
+                          ].map(({label,sub,key,color},ri)=>(
+                            <tr key={key} style={{borderBottom:`1px solid ${WP.borderL}`,
+                              background:ri===0?"#fff":WP.bg}}>
+                              <td style={{padding:"10px 14px"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:7}}>
+                                  <div style={{width:9,height:9,borderRadius:1,
+                                    background:color,flexShrink:0}}/>
+                                  <div>
+                                    <div style={{fontWeight:600,fontSize:11,color:"#1a1a1a"}}>{label}</div>
+                                    <div style={{fontSize:9,color:WP.faint}}>{sub}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              {WPerf.map(p=>(
+                                <td key={p.label} style={{padding:"10px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
+                                  <span style={{fontFamily:WP.serif,fontSize:12,fontWeight:600,
+                                    color:p[key]>=0?color:WP.neg}}>
+                                    {sgn(p[key])}%
+                                  </span>
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                          <tr style={{background:WP.goldL,borderTop:`1px solid ${WP.border}`}}>
+                            <td style={{padding:"8px 14px"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:7}}>
+                                <div style={{width:9,height:9,borderRadius:1,
+                                  background:WP.gold,flexShrink:0}}/>
+                                <span style={{fontWeight:600,fontSize:10,color:WP.gold}}>
+                                  Alpha (APEX − SPY)
+                                </span>
+                              </div>
+                            </td>
+                            {WPerf.map(p=>{
+                              const v=p.apex-p.spy;
+                              return(
+                                <td key={p.label} style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
+                                  <span style={{fontFamily:WP.serif,fontSize:11,fontWeight:700,
+                                    color:v>=0?WP.gold:WP.neg}}>
+                                    {sgn(v)}pp
+                                  </span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Risk Metrics */}
+                  <div style={{background:"#fff",border:`1px solid ${WP.border}`,
+                    borderRadius:3,overflow:"hidden"}}>
+                    <div style={{padding:"10px 14px",borderBottom:`1px solid ${WP.border}`,
+                      background:WP.bg}}>
+                      <span style={{fontFamily:WP.serif,fontSize:13,fontWeight:700}}>Risk Metrics by Period</span>
+                    </div>
+                    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                      <table style={{width:"100%",minWidth:480,borderCollapse:"collapse",fontSize:11,fontFamily:WP.sans}}>
+                        <thead>
+                          <tr style={{background:WP.bg,borderBottom:`1px solid ${WP.border}`}}>
+                            <th style={{padding:"8px 14px",textAlign:"left",fontSize:10,color:WP.faint,fontWeight:600,width:180}}/>
+                            {WRisk.map(r=>(
+                              <th key={r.label} style={{padding:"8px 10px",textAlign:"right",
+                                fontSize:10,color:WP.faint,fontWeight:600,minWidth:64}}>{r.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            {metric:"Sharpe — APEX",   vals:WRisk.map(r=>r.apexS.toFixed(3)), color:WP.green},
+                            {metric:"Sharpe — SPY",    vals:WRisk.map(r=>r.spyS.toFixed(3)),  color:WP.navy},
+                            {metric:"Max DD — APEX",   vals:WRisk.map(r=>r.apexDD.toFixed(1)+"%"),color:WP.warn},
+                            {metric:"Max DD — SPY",    vals:WRisk.map(r=>r.spyDD.toFixed(1)+"%"), color:WP.neg},
+                            {metric:"$10K — APEX",     vals:WRisk.map(r=>"$"+r.apex10k.toLocaleString()),color:WP.green},
+                            {metric:"$10K — SPY",      vals:WRisk.map(r=>"$"+r.spy10k.toLocaleString()), color:WP.navy},
+                          ].map(({metric,vals,color},ri)=>(
+                            <tr key={metric} style={{borderBottom:`1px solid ${WP.borderL}`,
+                              background:ri%2===0?"#fff":WP.bg}}>
+                              <td style={{padding:"8px 14px",fontSize:10,color:WP.muted,
+                                fontWeight:500,whiteSpace:"nowrap"}}>{metric}</td>
+                              {vals.map((v,i)=>(
+                                <td key={i} style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
+                                  <span style={{fontFamily:WP.serif,fontSize:11,fontWeight:500,color}}>{v}</span>
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </WSection>
+
+                {/* ── ANNUAL RETURNS ── */}
+                <WSection title="Annual Returns">
+                  <div style={{background:"#fff",border:`1px solid ${WP.border}`,borderRadius:3,overflow:"hidden"}}>
+                    <div style={{padding:"14px 16px 0",display:"flex",justifyContent:"space-between",
+                      alignItems:"center",marginBottom:12}}>
+                      <div style={{fontFamily:WP.serif,fontSize:13,fontWeight:700}}>Bar Chart 2000–2026</div>
+                      <div style={{display:"flex",gap:14,fontSize:10}}>
+                        {[[WP.green,"APEX"],[WP.navy,"SPY"]].map(([c,l])=>(
+                          <span key={l} style={{display:"flex",alignItems:"center",gap:5}}>
+                            <span style={{display:"inline-block",width:10,height:10,background:c}}/>
+                            <span style={{color:WP.muted}}>{l}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",padding:"0 16px 16px"}}>
+                      <div style={{minWidth:500}}>
+                        {(()=>{
+                          const H=120,mid=60,bw=9,gap=2,gg=4;
+                          const vals=ANNUAL.map(d=>[d.apex,d.spy]).flat();
+                          const mx=Math.max(...vals.map(Math.abs),1);
+                          const W=ANNUAL.length*(bw*2+gap+gg);
+                          const sc2=v=>(Math.abs(v)/mx)*(mid-8);
+                          return(
+                            <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:H,display:"block"}}>
+                              <line x1="0" y1={mid} x2={W} y2={mid} stroke={WP.border} strokeWidth="1"/>
+                              {ANNUAL.map((d,i)=>{
+                                const x=i*(bw*2+gap+gg);
+                                const ah=sc2(d.apex),sh=sc2(d.spy);
+                                return(
+                                  <g key={d.yr}>
+                                    <rect x={x} y={d.apex>=0?mid-ah:mid} width={bw} height={ah}
+                                      fill={d.apex>=0?WP.green:WP.neg} opacity="0.85" rx="0.5"/>
+                                    <rect x={x+bw+gap} y={d.spy>=0?mid-sh:mid} width={bw} height={sh}
+                                      fill={d.spy>=0?WP.navy:WP.warn} opacity="0.65" rx="0.5"/>
+                                    {i%5===0&&<text x={x+bw} y={H-1} textAnchor="middle"
+                                      fontSize="7" fill={WP.faint} fontFamily="Inter,sans-serif">{d.yr}</text>}
+                                  </g>
+                                );
+                              })}
+                            </svg>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    <div style={{borderTop:`1px solid ${WP.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                      <table style={{width:"100%",minWidth:360,borderCollapse:"collapse",fontSize:11,fontFamily:WP.sans}}>
+                        <thead style={{position:"sticky",top:0,background:"#fff"}}>
+                          <tr style={{borderBottom:`2px solid ${WP.border}`}}>
+                            {["Year","APEX","SPY","Alpha"].map((h,i)=>(
+                              <th key={h} style={{padding:"7px 12px",textAlign:i===0?"left":"right",
+                                fontSize:10,color:WP.faint,fontWeight:600}}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...ANNUAL].reverse().map((d,i)=>(
+                            <tr key={d.yr} style={{borderBottom:`1px solid ${WP.borderL}`,
+                              background:i%2===0?"#fff":WP.bg}}>
+                              <td style={{padding:"7px 12px",fontWeight:500,color:WP.muted}}>{d.yr}</td>
+                              <td style={{padding:"7px 12px",textAlign:"right"}}>
+                                <span style={{fontFamily:WP.serif,fontSize:12,fontWeight:700,
+                                  color:d.apex>=0?WP.green:WP.neg}}>{sgn(d.apex)}%</span>
+                              </td>
+                              <td style={{padding:"7px 12px",textAlign:"right"}}>
+                                <span style={{fontFamily:WP.serif,fontSize:12,
+                                  color:d.spy>=0?WP.navy:WP.warn}}>{sgn(d.spy)}%</span>
+                              </td>
+                              <td style={{padding:"7px 12px",textAlign:"right"}}>
+                                {(()=>{const a=d.apex-d.spy;return(
+                                  <span style={{fontFamily:WP.serif,fontSize:11,fontWeight:700,
+                                    color:a>=0?WP.gold:WP.neg}}>{sgn(a)}pp</span>
+                                );})()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </WSection>
+
+                {/* ── STRATEGY OVERVIEW ── */}
+                <WSection title="Strategy Overview">
+                  <p style={{fontFamily:WP.serif,fontSize:13,lineHeight:1.85,color:"#1a1a1a",marginBottom:12}}>
+                    The APEX Dynamic SPY Strategy applies a systematic, rules-based options overlay
+                    to a concentrated SPY position held in a taxable account. The strategy combines a
+                    four-regime MA-based leverage framework with a weekly covered call program and
+                    VIX-dynamic delta adjustment to generate consistent income while actively managing drawdown risk.
+                  </p>
+                  <p style={{fontFamily:WP.serif,fontSize:13,lineHeight:1.85,color:"#1a1a1a",marginBottom:16}}>
+                    Backtested across 26 years of live market data (2000–2026) — including the dot-com crash,
+                    the Global Financial Crisis, and COVID-19 — the strategy produced a{" "}
+                    <strong>15.05% annualized return</strong> against SPY's 6.46%, with a maximum drawdown of
+                    41.0% versus SPY's 56.5%. A $3.2M starting position compounded to{" "}
+                    <strong>$112.7M</strong>, representing $63.6 million in incremental wealth above buy-and-hold.
+                  </p>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                    {[
+                      {n:"Layer 1",t:"Core Equity",c:WP.green,bg:WP.greenL,
+                        d:"Direct SPY shares, never sold. All appreciation accrues as unrealized long-term capital gain."},
+                      {n:"Layer 2",t:"Dynamic Leverage",c:WP.navy,bg:WP.navyL,
+                        d:"Leverage 0.50x–1.75x based on MA50/MA200 regime. Reduced to 0.50x in bear. Portfolio margin required."},
+                      {n:"Layer 3",t:"Income Overlay",c:WP.gold,bg:WP.goldL,
+                        d:"Weekly 7-DTE covered calls. Delta 0.15–0.30 adjusted ±0.05 by VIX. 70% profit roll trigger."},
+                    ].map(({n,t,c,bg,d})=>(
+                      <div key={n} style={{background:bg,borderTop:`3px solid ${c}`,
+                        borderRadius:2,padding:"12px 14px"}}>
+                        <div style={{fontSize:8,color:c,letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>{n}</div>
+                        <div style={{fontFamily:WP.serif,fontSize:12,fontWeight:700,color:"#1a1a1a",marginBottom:6}}>{t}</div>
+                        <div style={{fontSize:10,color:WP.muted,lineHeight:1.7}}>{d}</div>
+                      </div>
+                    ))}
+                  </div>
+                </WSection>
+
+                {/* ── REGIME FRAMEWORK ── */}
+                <WSection title="Regime Classification Framework">
+                  <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10}}>
+                    <table style={{width:"100%",minWidth:560,borderCollapse:"collapse",fontSize:11,fontFamily:WP.sans}}>
+                      <thead>
+                        <tr style={{background:WP.bg,borderBottom:`2px solid ${WP.border}`}}>
+                          {["Regime","Condition","Leverage","Base Δ","VIX < 16","VIX > 25","Overwrite"].map((h,i)=>(
+                            <th key={h} style={{padding:"8px 12px",textAlign:i===0?"left":"center",
+                              fontSize:10,color:WP.faint,fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          {r:"R0 — BEAR",  cond:"Below MA50 & MA200",     lev:"0.50x",bg:"#fff1f1",bc:"#fca5a5",tc:"#991b1b",d:"Δ0.15",vlo:"Δ0.20",vhi:"Δ0.10",ow:"100%"},
+                          {r:"R1 — WEAK",  cond:"Below MA50, above MA200", lev:"1.25x",bg:"#fff7ed",bc:"#fdba74",tc:"#92400e",d:"Δ0.20",vlo:"Δ0.25",vhi:"Δ0.15",ow:"25–100%"},
+                          {r:"R2 — MIXED", cond:"Above MA50, below MA200", lev:"1.25x",bg:"#fefce8",bc:"#fde047",tc:"#854d0e",d:"Δ0.25",vlo:"Δ0.30",vhi:"Δ0.20",ow:"25–100%"},
+                          {r:"R3 — STRONG",cond:"Above MA50 & MA200",      lev:"1.75x",bg:"#f0fdf4",bc:"#86efac",tc:"#14532d",d:"Δ0.30",vlo:"Δ0.35",vhi:"Δ0.25",ow:"25–100%"},
+                        ].map(({r,cond,lev,bg,bc,tc,d,vlo,vhi,ow})=>(
+                          <tr key={r} style={{borderBottom:`1px solid ${WP.borderL}`,background:bg}}>
+                            <td style={{padding:"9px 12px"}}>
+                              <span style={{background:bg,border:`1px solid ${bc}`,color:tc,
+                                borderRadius:2,padding:"2px 8px",fontSize:10,fontWeight:600,
+                                whiteSpace:"nowrap"}}>{r}</span>
+                            </td>
+                            <td style={{padding:"9px 12px",textAlign:"center",fontSize:10,color:WP.muted}}>{cond}</td>
+                            <td style={{padding:"9px 12px",textAlign:"center",fontFamily:WP.serif,fontWeight:700,color:tc,fontSize:12}}>{lev}</td>
+                            <td style={{padding:"9px 12px",textAlign:"center",fontSize:11}}>{d}</td>
+                            <td style={{padding:"9px 12px",textAlign:"center",fontSize:11,color:WP.green}}>{vlo}</td>
+                            <td style={{padding:"9px 12px",textAlign:"center",fontSize:11,color:WP.warn}}>{vhi}</td>
+                            <td style={{padding:"9px 12px",textAlign:"center",fontSize:10,color:WP.muted}}>{ow}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{background:WP.greenL,border:`1px solid ${WP.green}30`,
+                    borderRadius:3,padding:"10px 14px",fontSize:11,color:WP.muted,lineHeight:1.7}}>
+                    <strong style={{color:WP.green}}>Trend Suppression:</strong> Score &gt;0.70 → 25% OW · 0.50–0.70 → 50% OW · &lt;0.50 → 100% OW.{" "}
+                    <strong style={{color:WP.green}}>Blackout Rule:</strong> No new calls in the 3 calendar days preceding the 2nd Wednesday (FOMC) or 2nd Friday (CPI) each month.
+                  </div>
+                </WSection>
+
+                {/* ── CALL PROGRAM ── */}
+                <WSection title="Weekly Covered Call Program">
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <div>
+                      <div style={{fontFamily:WP.serif,fontSize:12,fontWeight:700,marginBottom:8}}>Program Parameters</div>
+                      <WTable
+                        headers={["Parameter","Value"]}
+                        rows={[
+                          ["Expiry Cycle","Weekly (7 calendar DTE)"],
+                          ["Execution Window","Monday 9:35–9:45 AM ET"],
+                          ["Strike Method","Black-Scholes delta targeting"],
+                          ["Delta Range","Δ0.10 – Δ0.40 (VIX-adjusted)"],
+                          ["IV Assumption","VIX × 1.10"],
+                          ["Early Roll Trigger","70% of premium captured"],
+                          ["Order Type","Limit order at mid-market"],
+                          ["Assignment Risk","None — roll prevents assignment"],
+                        ]}
+                      />
+                    </div>
+                    <div>
+                      <div style={{fontFamily:WP.serif,fontSize:12,fontWeight:700,marginBottom:4}}>Premium by VIX Level</div>
+                      <div style={{fontSize:10,color:WP.faint,marginBottom:8}}>Per $1M SPY notional · 52 cycles/year</div>
+                      <WTable
+                        headers={["VIX Level","Delta","Yield/yr","$/yr per $1M"]}
+                        rows={[
+                          ["Below 16","Δ0.25–0.35","5–8%",{v:"$50–80K",color:WP.green}],
+                          ["16 to 25","Δ0.20–0.30","8–14%",{v:"$80–140K",color:WP.green,bold:true}],
+                          ["Above 25","Δ0.10–0.25","14–22%",{v:"$140–220K",color:WP.green,bold:true}],
+                        ]}
+                      />
+                      <div style={{marginTop:8,padding:"10px 12px",background:WP.greenL,
+                        border:`1px solid ${WP.green}30`,borderRadius:3,fontSize:10,
+                        color:WP.muted,lineHeight:1.7}}>
+                        At current scale (~$32M): gross annual premium at VIX 18 ≈{" "}
+                        <strong style={{color:WP.green}}>$2.6–4.5M/yr</strong>. Premium income
+                        is anti-correlated with market direction.
+                      </div>
+                    </div>
+                  </div>
+                </WSection>
+
+                {/* ── EXECUTION PROTOCOL ── */}
+                <WSection title="Monday Morning Execution Protocol">
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    {[
+                      [["1","Data Pull","Pull SPY price, VIX, MA50, MA200. Auto-fetched via Finnhub API in APEX app."],
+                       ["2","Regime Check","Determine R0–R3 based on SPY vs. MA50 and MA200. Confirm regime in app header."],
+                       ["3","Blackout","Verify no FOMC/CPI within 3 calendar days. If active — stop. No new calls."],
+                       ["4","Rebalance","If leverage deviates >3% from target: buy or sell SPY shares at market open."]],
+                      [["5","Early Roll","If open call has captured ≥70% of premium, buy back and proceed to Step 6."],
+                       ["6","Sell New Call","B-S delta targeting + VIX adj (±0.05Δ) + trend suppression. Limit at mid."],
+                       ["7","Log Trade","Enter in APEX app Trade Log: strike, expiry, premium, contracts, NAV after."],
+                       ["8","Monitor","Check roll progress daily. 70% trigger shown live in app."]]
+                    ].map((col,ci)=>(
+                      <div key={ci}>
+                        {col.map(([n,t,d])=>(
+                          <div key={n} style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
+                            <div style={{width:20,height:20,borderRadius:"50%",background:WP.green,
+                              color:"#fff",fontSize:10,fontWeight:700,display:"flex",
+                              alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>
+                              {n}
+                            </div>
+                            <div>
+                              <div style={{fontWeight:600,fontSize:11,color:"#1a1a1a",marginBottom:2}}>{t}</div>
+                              <div style={{fontSize:10,color:WP.muted,lineHeight:1.7}}>{d}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </WSection>
+
+                {/* ── TAX & RISK ── */}
+                <WSection title="Tax Considerations & Risk Factors">
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <div>
+                      <div style={{fontFamily:WP.serif,fontSize:12,fontWeight:700,marginBottom:10}}>Tax Structure</div>
+                      {[
+                        ["Underlying Shares","Never sold via the strategy. All appreciation is unrealized long-term capital gain. Bear regime adjusts borrowed capital only."],
+                        ["Call Premium","Short-term ordinary income. Roll mechanics create an offsetting short-term loss reducing net taxable income."],
+                        ["Qualified Calls","7-DTE calls at target delta are structured to qualify under IRC §1092, preserving the holding period on underlying shares."],
+                      ].map(([t,d])=>(
+                        <div key={t} style={{marginBottom:10,paddingBottom:10,
+                          borderBottom:`1px solid ${WP.borderL}`}}>
+                          <div style={{fontWeight:600,fontSize:10,color:WP.green,marginBottom:3}}>{t}</div>
+                          <div style={{fontSize:10,color:WP.muted,lineHeight:1.7}}>{d}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{fontFamily:WP.serif,fontSize:12,fontWeight:700,marginBottom:10}}>Key Risk Factors</div>
+                      {[
+                        ["Leverage Risk","1.75x in R3 amplifies losses. MA50/MA200 bear rule auto-drops to 0.50x — no discretion required. VIX >25 reduces delta automatically."],
+                        ["Flash Crash Risk","Fast drops before MA confirmation (2015: −9.9% vs. SPY −0.7%). VIX regime provides early warning. 3-close re-entry rule reduces false breaks."],
+                        ["Trend Suppression","At 25% OW in strong trends, 75% of position is uncovered. Strong SPY rallies will outperform the strategy."],
+                        ["Model Risk","All backtested options use Black-Scholes with IV = VIX × 1.10. Real spreads and bid/ask differ. ~0.1–0.2% annual drag not modeled."],
+                      ].map(([t,d])=>(
+                        <div key={t} style={{marginBottom:10,paddingBottom:10,
+                          borderBottom:`1px solid ${WP.borderL}`}}>
+                          <div style={{fontWeight:600,fontSize:10,color:WP.warn,marginBottom:3}}>{t}</div>
+                          <div style={{fontSize:10,color:WP.muted,lineHeight:1.7}}>{d}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </WSection>
+
+                {/* ── CONCLUSION ── */}
+                <WSection title="Investment Conclusion">
+                  <div style={{background:WP.greenL,border:`1px solid ${WP.green}40`,
+                    borderRadius:3,padding:"18px 20px",marginBottom:14}}>
+                    <p style={{fontFamily:WP.serif,fontSize:13,lineHeight:1.9,color:"#1a1a1a",margin:"0 0 10px"}}>
+                      The APEX Dynamic SPY Strategy delivers a compelling combination of income generation,
+                      drawdown management, and long-term compounding. Across 26 years and four major market
+                      dislocations, the strategy produced <strong>15.05% annualized returns</strong> with a
+                      Sharpe of 0.516 — while limiting maximum drawdowns to 41.0% versus SPY's 56.5%.
+                    </p>
+                    <p style={{fontFamily:WP.serif,fontSize:13,lineHeight:1.9,color:"#1a1a1a",margin:0}}>
+                      The strategy's edge is structural. The four-regime MA framework, 7-DTE weekly calls
+                      across 52 annual cycles, VIX-dynamic delta adjustment, and trend suppression prevent
+                      call overwriting from capping returns in strong bull markets.
+                      No directional forecasting is required.
+                    </p>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:16}}>
+                      {[
+                        {l:"From $3.2M",    v:"$112.7M",  s:"26-year final value",        c:WP.green},
+                        {l:"vs. B&H",       v:"+$63.6M",  s:"incremental wealth",          c:WP.green},
+                        {l:"Annual Alpha",  v:"+8.59%",    s:"annualized outperformance",   c:WP.gold},
+                        {l:"Sharpe Ratio",  v:"0.516",     s:"vs. SPY 0.077",               c:WP.green},
+                      ].map(({l,v,s,c})=>(
+                        <div key={l} style={{background:"#fff",border:`1px solid ${WP.green}25`,
+                          borderRadius:2,padding:"10px 12px"}}>
+                          <div style={{fontSize:8,color:WP.faint,textTransform:"uppercase",
+                            letterSpacing:0.5,marginBottom:3}}>{l}</div>
+                          <div style={{fontFamily:WP.serif,fontSize:17,fontWeight:700,color:c,lineHeight:1}}>{v}</div>
+                          <div style={{fontSize:9,color:WP.faint,marginTop:3}}>{s}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </WSection>
+
+                {/* ── FOOTER ── */}
+                <div style={{borderTop:`1px solid ${WP.border}`,paddingTop:14,
+                  fontSize:9.5,color:WP.faint,lineHeight:1.8,fontFamily:WP.sans}}>
+                  <div style={{fontFamily:WP.sans,fontSize:10,color:WP.muted,fontWeight:600,marginBottom:6}}>
+                    &copy; {new Date().getFullYear()} Tenacity Investments, LLC. All rights reserved.
+                    Confidential &mdash; not for redistribution without written consent.
+                  </div>
+                  <strong style={{color:WP.muted}}>Backtest Methodology:</strong> SPY daily OHLCV 2000–2026 (6,387 trading days).
+                  VIX: CBOE closing values, 100% real data, no proxies. Options: Black-Scholes, IV = VIX/100 × 1.10.
+                  Margin cost: 4.5%/yr daily accrual. Risk-free rate: 4.5%. No look-ahead bias: all regime signals use
+                  prior-day close; all trades execute at next open. Transaction costs not explicitly modeled
+                  (~0.1–0.2% estimated annual drag). Walk-forward validation pending.
+                  &nbsp;·&nbsp;
+                  <strong style={{color:WP.muted}}>Disclosure:</strong> This document does not constitute investment
+                  or tax advice. The strategy involves margin and options which carry risks beyond a simple long-equity
+                  position. Consult a qualified financial advisor and tax counsel before implementation.
+                  Past performance does not guarantee future results.
+                </div>
+
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ══════════════════════ SETTINGS */}
+        {tab==="settings"&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+            <Card>
+              <Lbl>FINNHUB API KEY</Lbl>
+              <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:12}}>
+                <div style={{padding:14,background:"#eef2f8",border:`1px solid ${C.border}`,borderRadius:8,fontSize:11,color:C.info,lineHeight:1.8}}>
+                  <b>Free setup (2 minutes):</b><br/>
+                  1. Go to <b>finnhub.io</b> and create a free account<br/>
+                  2. Copy your API key from the dashboard<br/>
+                  3. Paste it below — app auto-fetches on load &amp; every 5 min
+                </div>
+                <Inp label="API Key" value={apiKey} onChange={v=>setApiKey(v)} placeholder="your_finnhub_api_key" type="text" hint="Stored locally · never sent anywhere except finnhub.io"/>
+                <button onClick={()=>fetchData(apiKey)} disabled={!apiKey||loading} style={{
+                  background:!apiKey?C.bg:C.text,border:`1px solid ${!apiKey?C.border:C.text}`,
+                  borderRadius:8,color:!apiKey?C.faint:"#fff",padding:"10px 20px",
+                  fontFamily:F.mono,fontSize:11,cursor:!apiKey?"not-allowed":"pointer",letterSpacing:1}}>
+                  {loading?"Fetching…":"TEST CONNECTION"}
+                </button>
+                {lastFetch&&<div style={{fontSize:11,color:C.apex}}>✓ Connected · Last fetch {lastFetch.toLocaleTimeString()}</div>}
+                {fetchErr&&<div style={{fontSize:11,color:C.danger}}>✗ {fetchErr}</div>}
+              </div>
+            </Card>
+            <Card>
+              <Lbl>STRATEGY v2 PARAMETERS</Lbl>
+              <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:4}}>
+                {[
+                  ["Manager",        "Tenacity Investments, LLC",C.apex],
+                  ["Version",        "APEX v2 · Dynamic Δ + VIX adj",C.apex],
+                  ["R0 Bear",        "0.50x · Δ0.15 base"],
+                  ["R1 Weak",        "1.25x · Δ0.20 base"],
+                  ["R2 Mixed",       "1.25x · Δ0.25 base"],
+                  ["R3 Strong",      "1.75x · Δ0.30 base"],
+                  ["VIX Adj",        "VIX<16 → +0.05Δ · VIX>25 → −0.05Δ"],
+                  ["DTE",            "7 days (weekly Friday)"],
+                  ["Early Roll",     "70% profit captured"],
+                  ["Trend Suppress", ">0.7 → 25% OW · 0.5–0.7 → 50% OW"],
+                  ["Blackout",       "3 days pre-FOMC + pre-CPI"],
+                  ["Ann Return",     "15.05%",C.apex],
+                  ["Sharpe",         "0.516", C.apex],
+                  ["Max Drawdown",   "−41.0%",C.warn],
+                  ["$3.2M → Final",  "$112.7M",C.apex],
+                ].map(([l,v,c=C.text])=>(
+                  <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"7px 12px",borderRadius:5,background:C.bg,border:`1px solid ${C.border}`}}>
+                    <span style={{fontSize:10,color:C.muted}}>{l}</span>
+                    <span style={{fontSize:10,fontWeight:600,color:c,fontFamily:F.mono}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<APEXApp/>);
+  </script>
+</body>
+</html>
