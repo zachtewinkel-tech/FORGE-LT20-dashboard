@@ -622,6 +622,76 @@ function macdLabel(closes: number[]): string {
   return "MACD bearish / weakening";
 }
 
+function fallbackTechnicalAutoData(
+  symbol: string,
+  price: number | null,
+  reason: string,
+  warnings: string[] = [],
+): TechnicalAutoData {
+  const asOf = new Date().toISOString();
+  const latestPrice = price && price > 0 ? price : null;
+
+  if (!latestPrice) {
+    return {
+      ticker: symbol,
+      asOf,
+      price: null,
+      sma50: null,
+      sma200: null,
+      above200dma: null,
+      technicalExtension: null,
+      hvn: null,
+      support: null,
+      resistance: null,
+      buyZoneLow: null,
+      buyZoneHigh: null,
+      buyAnchor: null,
+      stopLevel: null,
+      trimLow: null,
+      trimHigh: null,
+      rsi14: null,
+      macdState: "Unavailable",
+      trendState: "No live price available",
+      confidence: "Low",
+      notes: `Manual TA required. ${reason}`,
+      warnings,
+    };
+  }
+
+  const anchor = latestPrice * 0.94;
+  const buyZoneLow = latestPrice * 0.88;
+  const buyZoneHigh = latestPrice * 0.97;
+  const stopLevel = buyZoneLow * 0.93;
+  const trimLow = latestPrice * 1.1;
+  const trimHigh = latestPrice * 1.18;
+
+  return {
+    ticker: symbol,
+    asOf,
+    price: round(latestPrice),
+    sma50: null,
+    sma200: null,
+    above200dma: null,
+    technicalExtension: null,
+    hvn: null,
+    support: round(buyZoneLow),
+    resistance: round(trimLow),
+    buyZoneLow: round(buyZoneLow),
+    buyZoneHigh: round(buyZoneHigh),
+    buyAnchor: round(anchor),
+    stopLevel: round(stopLevel),
+    trimLow: round(trimLow),
+    trimHigh: round(trimHigh),
+    rsi14: null,
+    macdState: "Fallback / verify in TradingView",
+    trendState: "Fallback price-based framework",
+    confidence: "Low",
+    notes:
+      `Fallback TA because ${reason}. Buy zone is a starter estimate based on current price; verify chips/HVN/ribbon/MACD/RSI directly in TradingView before trading.`,
+    warnings,
+  };
+}
+
 async function fetchTechnicalAutoData(
   symbol: string,
   token: string,
@@ -641,30 +711,14 @@ async function fetchTechnicalAutoData(
   const closes = candles.map((x) => x.close).filter(Number.isFinite);
   const latestPrice = price ?? closes[closes.length - 1] ?? null;
   if (!latestPrice || latestPrice <= 0 || closes.length < 60) {
-    return {
-      ticker: symbol,
-      asOf,
-      price: latestPrice,
-      sma50: null,
-      sma200: null,
-      above200dma: null,
-      technicalExtension: null,
-      hvn: null,
-      support: null,
-      resistance: null,
-      buyZoneLow: null,
-      buyZoneHigh: null,
-      buyAnchor: null,
-      stopLevel: null,
-      trimLow: null,
-      trimHigh: null,
-      rsi14: null,
-      macdState: "Unavailable",
-      trendState: "Insufficient price history",
-      confidence: "Low",
-      notes: "Insufficient Finnhub candle history. Enter TA levels manually from TradingView.",
+    return fallbackTechnicalAutoData(
+      symbol,
+      latestPrice,
+      closes.length < 60
+        ? "Finnhub returned insufficient candle history"
+        : "no current price was available",
       warnings,
-    };
+    );
   }
 
   const sma50 = average(closes.slice(-50));
@@ -1059,32 +1113,12 @@ export async function GET(request: Request) {
           warnings.push(
             `${symbol} technical: ${error instanceof Error ? error.message : "technical data unavailable"}`,
           );
-          technical[symbol] = {
-            ticker: symbol,
-            asOf,
-            price: quotes[symbol]?.price ?? null,
-            sma50: null,
-            sma200: null,
-            above200dma: null,
-            technicalExtension: null,
-            hvn: null,
-            support: null,
-            resistance: null,
-            buyZoneLow: null,
-            buyZoneHigh: null,
-            buyAnchor: null,
-            stopLevel: null,
-            trimLow: null,
-            trimHigh: null,
-            rsi14: null,
-            macdState: "Unavailable",
-            trendState: "Unavailable",
-            confidence: "Low",
-            notes: "Technical data unavailable. Enter levels manually from TradingView.",
-            warnings: [
-              error instanceof Error ? error.message : "technical data unavailable",
-            ],
-          };
+          technical[symbol] = fallbackTechnicalAutoData(
+            symbol,
+            quotes[symbol]?.price ?? null,
+            error instanceof Error ? error.message : "technical data unavailable",
+            [error instanceof Error ? error.message : "technical data unavailable"],
+          );
         }
       }),
     );

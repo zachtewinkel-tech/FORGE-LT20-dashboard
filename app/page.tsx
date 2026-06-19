@@ -1497,6 +1497,50 @@ export default function ForgeDashboard() {
 
   return (
     <main className="min-h-screen bg-[#EEF1F6] text-[#0D1B2A]">
+      <style jsx global>{`
+        .compact-data-table {
+          font-size: 11px;
+          line-height: 1.15;
+        }
+        .compact-data-table th {
+          padding: 6px 5px !important;
+          font-size: 10px !important;
+          white-space: nowrap;
+        }
+        .compact-data-table td {
+          padding: 5px !important;
+        }
+        .compact-data-table input,
+        .compact-data-table select,
+        .compact-data-table textarea {
+          width: 100% !important;
+          min-height: 28px;
+          padding: 4px 5px !important;
+          font-size: 11px !important;
+          line-height: 1.15 !important;
+        }
+        .compact-data-table .zone-pair input {
+          width: 58px !important;
+        }
+        .compact-data-table .live-label {
+          font-size: 9px !important;
+          line-height: 1.1 !important;
+        }
+        .holdings-table {
+          min-width: 1480px !important;
+        }
+        .bench-table {
+          min-width: 1520px !important;
+        }
+        .holdings-table td:nth-child(1), .bench-table td:nth-child(2) { width: 72px; }
+        .holdings-table td:nth-child(2), .bench-table td:nth-child(3) { width: 150px; }
+        .holdings-table td:nth-child(3), .bench-table td:nth-child(4) { width: 105px; }
+        .holdings-table td:nth-child(4), .bench-table td:nth-child(5) { width: 125px; }
+        .holdings-table td:nth-child(8), .bench-table td:nth-child(7),
+        .holdings-table td:nth-child(11), .bench-table td:nth-child(10) { width: 126px; }
+        .holdings-table td:nth-child(12), .bench-table td:nth-child(11) { width: 95px; }
+        .bench-table td:nth-child(18) { width: 170px; }
+      `}</style>
       <section className="mx-auto max-w-7xl bg-white shadow-sm">
         <header className="border-b-2 border-[#C9A84C] bg-[#0D1B2A] px-8 py-7 text-white">
           <div className="flex items-start justify-between gap-6">
@@ -1826,7 +1870,7 @@ export default function ForgeDashboard() {
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto">
-                  <table className="w-full min-w-[2050px] border-collapse text-sm">
+                  <table className="compact-data-table holdings-table w-full border-collapse">
                     <thead className="bg-[#0D1B2A] text-white">
                       <tr>
                         {[
@@ -1958,7 +2002,7 @@ export default function ForgeDashboard() {
                               }
                             />
                             {liveQuotes[normalizeTicker(h.ticker)] ? (
-                              <div className="mt-1 text-[10px] font-bold text-[#067647]">
+                              <div className="live-label mt-1 font-bold text-[#067647]">
                                 LIVE{" "}
                                 {formatSignedPercentPoints(
                                   liveQuotes[normalizeTicker(h.ticker)]
@@ -1968,7 +2012,7 @@ export default function ForgeDashboard() {
                             ) : null}
                           </td>
                           <td className="p-2">
-                            <div className="flex gap-1">
+                            <div className="zone-pair flex gap-1">
                               <input
                                 className="w-20 border border-[#E5D8A8] p-2"
                                 type="number"
@@ -1997,7 +2041,7 @@ export default function ForgeDashboard() {
                               />
                             </div>
                             {h.price >= (h.buyZoneLow ?? 0) && h.price <= (h.buyZoneHigh ?? 0) && h.buyZoneLow > 0 ? (
-                              <div className="mt-1 text-[10px] font-black text-[#067647]">IN ZONE</div>
+                              <div className="live-label mt-1 font-black text-[#067647]">IN ZONE</div>
                             ) : null}
                           </td>
                           <td className="p-2">
@@ -2030,11 +2074,11 @@ export default function ForgeDashboard() {
                               }
                             />
                             {h.stopLevel > 0 && h.price < h.stopLevel ? (
-                              <div className="mt-1 text-[10px] font-black text-[#B42318]">BROKEN</div>
+                              <div className="live-label mt-1 font-black text-[#B42318]">BROKEN</div>
                             ) : null}
                           </td>
                           <td className="p-2">
-                            <div className="flex gap-1">
+                            <div className="zone-pair flex gap-1">
                               <input
                                 className="w-20 border border-[#E5D8A8] p-2"
                                 type="number"
@@ -2264,7 +2308,7 @@ export default function ForgeDashboard() {
                 </div>
               </div>
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[2150px] border-collapse text-sm">
+                <table className="compact-data-table bench-table w-full border-collapse">
                   <thead className="bg-[#0D1B2A] text-white">
                     <tr>
                       {[
@@ -2392,14 +2436,14 @@ export default function ForgeDashboard() {
                               }
                             />
                             {live ? (
-                              <div className="mt-1 text-[10px] font-bold text-[#067647]">
+                              <div className="live-label mt-1 font-bold text-[#067647]">
                                 LIVE{" "}
                                 {formatSignedPercentPoints(live.changePercent)}
                               </div>
                             ) : null}
                           </td>
                           <td className="p-2">
-                            <div className="flex gap-1">
+                            <div className="zone-pair flex gap-1">
                               <input
                                 className="w-20 border border-[#E5D8A8] p-2"
                                 type="number"
@@ -2428,7 +2472,7 @@ export default function ForgeDashboard() {
                               />
                             </div>
                             {s.price >= (s.buyZoneLow ?? 0) && s.price <= (s.buyZoneHigh ?? 0) && s.buyZoneLow > 0 ? (
-                              <div className="mt-1 text-[10px] font-black text-[#067647]">IN ZONE</div>
+                              <div className="live-label mt-1 font-black text-[#067647]">IN ZONE</div>
                             ) : null}
                           </td>
                           <td className="p-2">
@@ -2461,11 +2505,11 @@ export default function ForgeDashboard() {
                               }
                             />
                             {s.stopLevel > 0 && s.price < s.stopLevel ? (
-                              <div className="mt-1 text-[10px] font-black text-[#B42318]">BROKEN</div>
+                              <div className="live-label mt-1 font-black text-[#B42318]">BROKEN</div>
                             ) : null}
                           </td>
                           <td className="p-2">
-                            <div className="flex gap-1">
+                            <div className="zone-pair flex gap-1">
                               <input
                                 className="w-20 border border-[#E5D8A8] p-2"
                                 type="number"
