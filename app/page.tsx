@@ -781,21 +781,77 @@ function dispersionToScore(dispersion: number): number {
   return clampNumber(100 - dispersion * 200, 0, 100);
 }
 
+function calculateTechnicalSetupScore(input: {
+  price?: number;
+  buyZoneLow?: number;
+  buyZoneHigh?: number;
+  stopLevel?: number;
+  trimLow?: number;
+  trimHigh?: number;
+  taConfidence?: TaConfidence;
+  above200dma?: boolean;
+  technicalExtension?: number;
+}): number {
+  const price = positiveNumber(input.price) ?? 0;
+  const buyLow = positiveNumber(input.buyZoneLow) ?? 0;
+  const buyHigh = positiveNumber(input.buyZoneHigh) ?? 0;
+  const stop = positiveNumber(input.stopLevel) ?? 0;
+  const trimLow = positiveNumber(input.trimLow) ?? 0;
+  const trimHigh = positiveNumber(input.trimHigh) ?? 0;
+  let score = 55;
+
+  if (input.above200dma) score += 10;
+  if (input.taConfidence === "Medium") score += 8;
+  if (input.taConfidence === "High") score += 15;
+  if (input.taConfidence === "Low") score += 2;
+
+  if (price > 0 && buyLow > 0 && buyHigh > 0) {
+    if (price >= buyLow && price <= buyHigh) score += 25;
+    else if (price > buyHigh && (!trimLow || price < trimLow)) score += 10;
+    else if (price < buyLow) score += 3;
+  }
+
+  if (price > 0 && stop > 0 && price < stop) score -= 35;
+  if (price > 0 && trimLow > 0 && price >= trimLow) score -= 10;
+  if (price > 0 && trimHigh > 0 && price >= trimHigh) score -= 15;
+  if (typeof input.technicalExtension === "number") {
+    if (input.technicalExtension >= 0.18) score -= 12;
+    else if (input.technicalExtension >= 0.10) score -= 5;
+    else if (input.technicalExtension >= -0.05 && input.technicalExtension <= 0.08)
+      score += 5;
+  }
+
+  return roundNumber(clampNumber(score, 0, 100), 0);
+}
+
 function calculateForgeSignalScore(input: {
   upside: number;
   revisionScore: number;
   momentumScore: number;
   qualityScore: number;
   dispersion: number;
+  price?: number;
+  buyZoneLow?: number;
+  buyZoneHigh?: number;
+  stopLevel?: number;
+  trimLow?: number;
+  trimHigh?: number;
+  taConfidence?: TaConfidence;
+  above200dma?: boolean;
+  technicalExtension?: number;
 }): number {
   const upsideScore = upsideToScore(input.upside);
-  const dispersionScore = dispersionToScore(input.dispersion);
+  const momentumComposite = clampNumber(
+    input.momentumScore * 0.7 + input.revisionScore * 0.3,
+    0,
+    100,
+  );
+  const technicalScore = calculateTechnicalSetupScore(input);
   const score =
-    upsideScore * 0.25 +
-    input.revisionScore * 0.45 +
-    input.momentumScore * 0.15 +
-    input.qualityScore * 0.1 +
-    dispersionScore * 0.05;
+    upsideScore * 0.3 +
+    momentumComposite * 0.25 +
+    input.qualityScore * 0.2 +
+    technicalScore * 0.25;
   return roundNumber(clampNumber(score, 0, 100), 0);
 }
 
@@ -809,6 +865,141 @@ function autoTag(active: boolean, label = "AUTO") {
       MANUAL
     </div>
   );
+}
+
+function positiveNumber(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
+function formatCurrencyTable(value: number | null | undefined): string {
+  const n = positiveNumber(value);
+  if (!n) return "—";
+  const digits = n < 20 ? 2 : n < 100 ? 1 : 0;
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatMetric(value: number | null | undefined, digits = 0): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatRatio(value: number | null | undefined, digits = 0): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+function formatSignedRatio(value: number | null | undefined, digits = 1): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  const pct = value * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(digits)}%`;
+}
+
+function valueBox(
+  main: React.ReactNode,
+  sub?: React.ReactNode,
+  tone: "neutral" | "positive" | "warning" | "negative" = "neutral",
+) {
+  return (
+    <div className={`readonly-box readonly-${tone}`}>
+      <div className="readonly-main">{main}</div>
+      {sub ? <div className="readonly-sub">{sub}</div> : null}
+    </div>
+  );
+}
+
+function zoneBox(
+  low: number | null | undefined,
+  high: number | null | undefined,
+  sub?: React.ReactNode,
+  tone: "neutral" | "positive" | "warning" | "negative" = "neutral",
+) {
+  return valueBox(
+    `${formatCurrencyTable(low)} – ${formatCurrencyTable(high)}`,
+    sub,
+    tone,
+  );
+}
+
+function scoreTone(score: number): "neutral" | "positive" | "warning" | "negative" {
+  if (score >= 80) return "positive";
+  if (score >= 65) return "neutral";
+  if (score >= 50) return "warning";
+  return "negative";
+}
+
+function scoreLabel(score: number): string {
+  if (score >= 80) return "STRONG";
+  if (score >= 65) return "WATCH";
+  if (score >= 50) return "NEUTRAL";
+  return "WEAK";
+}
+
+function displayTaFields(
+  row: Pick<
+    Holding | BenchCandidate,
+    | "price"
+    | "buyZoneLow"
+    | "buyZoneHigh"
+    | "buyAnchor"
+    | "stopLevel"
+    | "trimLow"
+    | "trimHigh"
+    | "taConfidence"
+    | "taNotes"
+  >,
+  ta?: TechnicalAutoData,
+) {
+  const price = positiveNumber(row.price) ?? positiveNumber(ta?.price) ?? 0;
+  const buyZoneLow =
+    positiveNumber(row.buyZoneLow) ?? positiveNumber(ta?.buyZoneLow) ??
+    (price ? price * 0.88 : 0);
+  const buyZoneHigh =
+    positiveNumber(row.buyZoneHigh) ?? positiveNumber(ta?.buyZoneHigh) ??
+    (price ? price * 0.97 : 0);
+  const buyAnchor =
+    positiveNumber(row.buyAnchor) ?? positiveNumber(ta?.buyAnchor) ??
+    (price ? price * 0.94 : 0);
+  const stopLevel =
+    positiveNumber(row.stopLevel) ?? positiveNumber(ta?.stopLevel) ??
+    (buyZoneLow ? buyZoneLow * 0.93 : 0);
+  const trimLow =
+    positiveNumber(row.trimLow) ?? positiveNumber(ta?.trimLow) ??
+    (price ? price * 1.1 : 0);
+  const trimHigh =
+    positiveNumber(row.trimHigh) ?? positiveNumber(ta?.trimHigh) ??
+    (price ? price * 1.18 : 0);
+  const confidence =
+    row.taConfidence && row.taConfidence !== "Manual"
+      ? row.taConfidence
+      : ta?.confidence ?? (price ? "Low" : "Manual");
+  const notes =
+    row.taNotes ||
+    ta?.notes ||
+    (price
+      ? "Fallback price-based TA estimate. Verify chips/HVN/ribbon/MACD/RSI directly in TradingView before trading."
+      : "Enter ticker and refresh live data to calculate the TA confluence framework.");
+
+  return {
+    price,
+    buyZoneLow: roundNumber(buyZoneLow, 2),
+    buyZoneHigh: roundNumber(buyZoneHigh, 2),
+    buyAnchor: roundNumber(buyAnchor, 2),
+    stopLevel: roundNumber(stopLevel, 2),
+    trimLow: roundNumber(trimLow, 2),
+    trimHigh: roundNumber(trimHigh, 2),
+    confidence,
+    notes,
+  };
 }
 
 function actionTone(action: string): string {
@@ -1499,47 +1690,116 @@ export default function ForgeDashboard() {
     <main className="min-h-screen bg-[#EEF1F6] text-[#0D1B2A]">
       <style jsx global>{`
         .compact-data-table {
-          font-size: 11px;
-          line-height: 1.15;
+          font-size: 10px;
+          line-height: 1.1;
         }
         .compact-data-table th {
-          padding: 6px 5px !important;
-          font-size: 10px !important;
+          padding: 6px 4px !important;
+          font-size: 9px !important;
+          line-height: 1.05 !important;
           white-space: nowrap;
         }
         .compact-data-table td {
-          padding: 5px !important;
+          padding: 4px !important;
+          vertical-align: top;
         }
         .compact-data-table input,
         .compact-data-table select,
         .compact-data-table textarea {
           width: 100% !important;
-          min-height: 28px;
-          padding: 4px 5px !important;
-          font-size: 11px !important;
-          line-height: 1.15 !important;
-        }
-        .compact-data-table .zone-pair input {
-          width: 58px !important;
-        }
-        .compact-data-table .live-label {
-          font-size: 9px !important;
+          min-height: 26px;
+          padding: 3px 4px !important;
+          font-size: 10px !important;
           line-height: 1.1 !important;
         }
+        .compact-data-table .live-label {
+          font-size: 8px !important;
+          line-height: 1.05 !important;
+        }
         .holdings-table {
-          min-width: 1480px !important;
+          min-width: 1040px !important;
         }
         .bench-table {
-          min-width: 1520px !important;
+          min-width: 900px !important;
         }
-        .holdings-table td:nth-child(1), .bench-table td:nth-child(2) { width: 72px; }
-        .holdings-table td:nth-child(2), .bench-table td:nth-child(3) { width: 150px; }
-        .holdings-table td:nth-child(3), .bench-table td:nth-child(4) { width: 105px; }
-        .holdings-table td:nth-child(4), .bench-table td:nth-child(5) { width: 125px; }
-        .holdings-table td:nth-child(8), .bench-table td:nth-child(7),
-        .holdings-table td:nth-child(11), .bench-table td:nth-child(10) { width: 126px; }
-        .holdings-table td:nth-child(12), .bench-table td:nth-child(11) { width: 95px; }
-        .bench-table td:nth-child(18) { width: 170px; }
+        .readonly-box {
+          min-height: 26px;
+          border: 1px solid #E5D8A8;
+          background: #F8FAFC;
+          padding: 4px 5px;
+          white-space: nowrap;
+        }
+        .readonly-main {
+          font-weight: 900;
+          color: #0D1B2A;
+        }
+        .readonly-sub {
+          margin-top: 2px;
+          font-size: 8px;
+          font-weight: 900;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          color: #667085;
+        }
+        .readonly-positive .readonly-sub,
+        .readonly-positive .readonly-main {
+          color: #067647;
+        }
+        .readonly-warning .readonly-sub,
+        .readonly-warning .readonly-main {
+          color: #A17600;
+        }
+        .readonly-negative .readonly-sub,
+        .readonly-negative .readonly-main {
+          color: #B42318;
+        }
+        .ta-detail-row td {
+          background: #F8FAFC;
+          border-bottom: 1px solid #E5D8A8;
+          padding: 0 4px 8px 4px !important;
+        }
+        .ta-detail-box {
+          border: 1px solid #E5D8A8;
+          border-left: 4px solid #C9A84C;
+          background: #FFFFFF;
+          padding: 8px 10px;
+        }
+        .ta-detail-title {
+          font-size: 9px;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #0D1B2A;
+        }
+        .ta-detail-text {
+          margin-top: 3px;
+          font-size: 11px;
+          line-height: 1.35;
+          color: #344054;
+        }
+        .ta-mini-grid {
+          margin-top: 7px;
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 6px;
+        }
+        .ta-mini-item {
+          border: 1px solid #EEF1F6;
+          background: #F8FAFC;
+          padding: 5px;
+        }
+        .ta-mini-label {
+          font-size: 8px;
+          font-weight: 900;
+          text-transform: uppercase;
+          color: #667085;
+        }
+        .ta-mini-value {
+          margin-top: 2px;
+          font-size: 10px;
+          font-weight: 900;
+          color: #0D1B2A;
+        }
       `}</style>
       <section className="mx-auto max-w-7xl bg-white shadow-sm">
         <header className="border-b-2 border-[#C9A84C] bg-[#0D1B2A] px-8 py-7 text-white">
@@ -1835,12 +2095,10 @@ export default function ForgeDashboard() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-xl font-black">
-                    Editable Holdings Ledger
+                    Holdings Ledger
                   </h3>
                   <p className="mt-2 text-sm text-[#344054]">
-                    Enter positions manually. Refresh Live Data now adds TA buy zones,
-                    stop/invalidation, trim/call zones, 200DMA status, and
-                    technical extension when Finnhub candle history is available.
+                    Streamlined decision view. Editable inputs remain on the left; calculated outputs are locked: live price, buy zone, call zone, combined 0–100 score, and action state.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -1865,7 +2123,7 @@ export default function ForgeDashboard() {
               {holdings.length === 0 ? (
                 <div className="mt-4 border border-[#E5D8A8] bg-[#F0EBD8] p-4 text-sm text-[#344054]">
                   No holdings entered yet. Go to the <strong>Bench</strong> tab
-                  and click <strong>Add</strong> next to a candidate, or use{" "}
+                  and click <strong>Promote</strong> next to a candidate, or use{" "}
                   <strong>Add Holding</strong> above.
                 </div>
               ) : (
@@ -1880,21 +2138,14 @@ export default function ForgeDashboard() {
                           "Sector",
                           "Shares",
                           "Cost",
+                          "Days",
+                          "Earnings",
                           "Price",
                           "Buy Zone",
-                          "Anchor",
-                          "Stop",
-                          "Trim / Call",
-                          "TA",
+                          "Call Zone",
+                          "Score",
                           "Weight",
                           "P&L",
-                          "Rank",
-                          "Score",
-                          "Upside",
-                          "Days",
-                          "200DMA",
-                          "Earnings",
-                          "Ext.",
                           "Action",
                           "",
                         ].map((h) => (
@@ -1908,366 +2159,205 @@ export default function ForgeDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {snapshot.enrichedHoldings.map((h) => (
-                        <tr
-                          key={h.id}
-                          className="border-b border-[#E5D8A8] align-top"
-                        >
-                          <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2 font-black"
-                              value={h.ticker}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "ticker",
-                                  e.target.value.toUpperCase(),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-52 border border-[#E5D8A8] p-2"
-                              value={h.name}
-                              onChange={(e) =>
-                                updateHolding(h.id, "name", e.target.value)
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <select
-                              className="w-36 border border-[#E5D8A8] p-2"
-                              value={h.sleeve}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "sleeve",
-                                  e.target.value as Sleeve,
-                                )
-                              }
-                            >
-                              <option>Core</option>
-                              <option>Opportunistic</option>
-                            </select>
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-44 border border-[#E5D8A8] p-2"
-                              value={h.sector}
-                              onChange={(e) =>
-                                updateHolding(h.id, "sector", e.target.value)
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={h.shares}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "shares",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={h.cost}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "cost",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={h.price}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "price",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {liveQuotes[normalizeTicker(h.ticker)] ? (
-                              <div className="live-label mt-1 font-bold text-[#067647]">
-                                LIVE{" "}
-                                {formatSignedPercentPoints(
-                                  liveQuotes[normalizeTicker(h.ticker)]
-                                    .changePercent,
-                                )}
-                              </div>
-                            ) : null}
-                          </td>
-                          <td className="p-2">
-                            <div className="zone-pair flex gap-1">
+                      {snapshot.enrichedHoldings.map((h) => {
+                        const ticker = normalizeTicker(h.ticker);
+                        const live = liveQuotes[ticker];
+                        const ta = technicalData[ticker];
+                        const displayTa = displayTaFields(h, ta);
+                        const inBuyZone =
+                          displayTa.price > 0 &&
+                          displayTa.buyZoneLow > 0 &&
+                          displayTa.buyZoneHigh > 0 &&
+                          displayTa.price >= displayTa.buyZoneLow &&
+                          displayTa.price <= displayTa.buyZoneHigh;
+                        const inTrimZone =
+                          displayTa.price > 0 &&
+                          displayTa.trimLow > 0 &&
+                          displayTa.price >= displayTa.trimLow;
+                        const combinedScore = calculateForgeSignalScore({
+                          ...h,
+                          price: displayTa.price,
+                          buyZoneLow: displayTa.buyZoneLow,
+                          buyZoneHigh: displayTa.buyZoneHigh,
+                          stopLevel: displayTa.stopLevel,
+                          trimLow: displayTa.trimLow,
+                          trimHigh: displayTa.trimHigh,
+                          taConfidence: displayTa.confidence,
+                          above200dma: ta?.above200dma ?? h.above200dma,
+                          technicalExtension: ta?.technicalExtension ?? h.technicalExtension,
+                        });
+                        return (
+                          <tr key={h.id} className="border-b border-[#E5D8A8] align-top">
+                            <td className="p-2">
                               <input
-                                className="w-20 border border-[#E5D8A8] p-2"
-                                type="number"
-                                step="0.01"
-                                value={h.buyZoneLow ?? 0}
+                                className="w-20 border border-[#E5D8A8] p-2 font-black"
+                                value={h.ticker}
                                 onChange={(e) =>
                                   updateHolding(
                                     h.id,
-                                    "buyZoneLow",
+                                    "ticker",
+                                    e.target.value.toUpperCase(),
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="w-40 border border-[#E5D8A8] p-2"
+                                value={h.name}
+                                onChange={(e) =>
+                                  updateHolding(h.id, "name", e.target.value)
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <select
+                                className="w-28 border border-[#E5D8A8] p-2"
+                                value={h.sleeve}
+                                onChange={(e) =>
+                                  updateHolding(
+                                    h.id,
+                                    "sleeve",
+                                    e.target.value as Sleeve,
+                                  )
+                                }
+                              >
+                                <option>Core</option>
+                                <option>Opportunistic</option>
+                              </select>
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="w-32 border border-[#E5D8A8] p-2"
+                                value={h.sector}
+                                onChange={(e) =>
+                                  updateHolding(h.id, "sector", e.target.value)
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="w-20 border border-[#E5D8A8] p-2"
+                                type="number"
+                                value={h.shares}
+                                onChange={(e) =>
+                                  updateHolding(
+                                    h.id,
+                                    "shares",
                                     parseNumber(e.target.value),
                                   )
                                 }
                               />
+                            </td>
+                            <td className="p-2">
                               <input
                                 className="w-20 border border-[#E5D8A8] p-2"
                                 type="number"
-                                step="0.01"
-                                value={h.buyZoneHigh ?? 0}
+                                value={h.cost}
                                 onChange={(e) =>
                                   updateHolding(
                                     h.id,
-                                    "buyZoneHigh",
+                                    "cost",
                                     parseNumber(e.target.value),
                                   )
                                 }
                               />
-                            </div>
-                            {h.price >= (h.buyZoneLow ?? 0) && h.price <= (h.buyZoneHigh ?? 0) && h.buyZoneLow > 0 ? (
-                              <div className="live-label mt-1 font-black text-[#067647]">IN ZONE</div>
-                            ) : null}
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2"
-                              type="number"
-                              step="0.01"
-                              value={h.buyAnchor ?? 0}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "buyAnchor",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2"
-                              type="number"
-                              step="0.01"
-                              value={h.stopLevel ?? 0}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "stopLevel",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {h.stopLevel > 0 && h.price < h.stopLevel ? (
-                              <div className="live-label mt-1 font-black text-[#B42318]">BROKEN</div>
-                            ) : null}
-                          </td>
-                          <td className="p-2">
-                            <div className="zone-pair flex gap-1">
+                            </td>
+                            <td className="p-2">
                               <input
-                                className="w-20 border border-[#E5D8A8] p-2"
+                                className="w-16 border border-[#E5D8A8] p-2"
                                 type="number"
-                                step="0.01"
-                                value={h.trimLow ?? 0}
+                                value={h.daysHeld}
                                 onChange={(e) =>
                                   updateHolding(
                                     h.id,
-                                    "trimLow",
+                                    "daysHeld",
                                     parseNumber(e.target.value),
                                   )
                                 }
                               />
+                              {h.ltcg ? (
+                                <div className="text-xs font-bold text-[#067647]">LTCG</div>
+                              ) : (
+                                <div className="text-xs font-bold text-[#B42318]">ST</div>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
                               <input
-                                className="w-20 border border-[#E5D8A8] p-2"
-                                type="number"
-                                step="0.01"
-                                value={h.trimHigh ?? 0}
+                                type="checkbox"
+                                checked={h.earningsBeforeExpiry}
                                 onChange={(e) =>
                                   updateHolding(
                                     h.id,
-                                    "trimHigh",
-                                    parseNumber(e.target.value),
+                                    "earningsBeforeExpiry",
+                                    e.target.checked,
                                   )
                                 }
                               />
-                            </div>
-                            {h.trimLow > 0 && h.price >= h.trimLow ? (
-                              <div className="mt-1 text-[10px] font-black text-[#C9A84C]">CALL/TRIM ZONE</div>
-                            ) : null}
-                          </td>
-                          <td className="p-2">
-                            <select
-                              className="w-28 border border-[#E5D8A8] p-2"
-                              value={h.taConfidence ?? "Manual"}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "taConfidence",
-                                  e.target.value as TaConfidence,
-                                )
-                              }
+                            </td>
+                            <td className="p-2">
+                              {valueBox(
+                                formatCurrencyTable(displayTa.price || h.price),
+                                live
+                                  ? `LIVE ${formatSignedPercentPoints(live.changePercent)}`
+                                  : "STORED",
+                                live ? "positive" : "neutral",
+                              )}
+                            </td>
+                            <td className="p-2">
+                              {zoneBox(
+                                displayTa.buyZoneLow,
+                                displayTa.buyZoneHigh,
+                                inBuyZone ? "IN ZONE" : "AUTO",
+                                inBuyZone ? "positive" : "neutral",
+                              )}
+                            </td>
+                            <td className="p-2">
+                              {zoneBox(
+                                displayTa.trimLow,
+                                displayTa.trimHigh,
+                                inTrimZone ? "COVER / TRIM" : "AUTO",
+                                inTrimZone ? "warning" : "neutral",
+                              )}
+                            </td>
+                            <td className="p-2">
+                              {valueBox(
+                                formatMetric(combinedScore),
+                                scoreLabel(combinedScore),
+                                scoreTone(combinedScore),
+                              )}
+                            </td>
+                            <td className="p-3 font-bold">
+                              {formatPercent(h.weight)}
+                            </td>
+                            <td
+                              className={`p-3 font-bold ${h.gain >= 0 ? "text-[#067647]" : "text-[#B42318]"}`}
                             >
-                              <option>Manual</option>
-                              <option>Low</option>
-                              <option>Medium</option>
-                              <option>High</option>
-                            </select>
-                            <div className="mt-1 max-w-48 text-[10px] font-bold text-[#344054]">
-                              {h.taNotes || technicalData[normalizeTicker(h.ticker)]?.trendState || "TA pending"}
-                            </div>
-                          </td>
-                          <td className="p-3 font-bold">
-                            {formatPercent(h.weight)}
-                          </td>
-                          <td
-                            className={`p-3 font-bold ${h.gain >= 0 ? "text-[#067647]" : "text-[#B42318]"}`}
-                          >
-                            {formatPercent(h.gain)}
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={h.forgeRank}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "forgeRank",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={h.signalScore}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "signalScore",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              step="0.01"
-                              value={h.upside}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "upside",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={h.daysHeld}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "daysHeld",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {h.ltcg ? (
-                              <div className="text-xs font-bold text-[#067647]">
-                                LTCG
-                              </div>
-                            ) : (
-                              <div className="text-xs font-bold text-[#B42318]">
-                                ST
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            <input
-                              type="checkbox"
-                              checked={h.above200dma}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "above200dma",
-                                  e.target.checked,
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-3">
-                            <input
-                              type="checkbox"
-                              checked={h.earningsBeforeExpiry}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "earningsBeforeExpiry",
-                                  e.target.checked,
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              step="0.01"
-                              value={h.technicalExtension}
-                              onChange={(e) =>
-                                updateHolding(
-                                  h.id,
-                                  "technicalExtension",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-3">
-                            <span
-                              className={`border px-2 py-1 text-xs font-black ${statusPill(h.action)}`}
-                            >
-                              {h.action}
-                            </span>
-                          </td>
-                          <td className="p-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setHoldings((prev) =>
-                                  prev.filter((x) => x.id !== h.id),
-                                )
-                              }
-                              className="text-xs font-black text-[#B42318]"
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                              {formatPercent(h.gain)}
+                            </td>
+                            <td className="p-3">
+                              <span
+                                className={`border px-2 py-1 text-xs font-black ${statusPill(h.action)}`}
+                              >
+                                {h.action}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setHoldings((prev) =>
+                                    prev.filter((x) => x.id !== h.id),
+                                  )
+                                }
+                                className="text-xs font-black text-[#B42318]"
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -2283,11 +2373,7 @@ export default function ForgeDashboard() {
                     Bench / Top Candidate Pool
                   </h3>
                   <p className="mt-2 text-sm text-[#344054]">
-                    FORGE should maintain a live Top 50 candidate bench. Add,
-                    edit, delete, and promote potential positions as the
-                    opportunity set changes over time. Refresh Live Data updates
-                    price, momentum, FORGE Score, TA buy zones, stop/invalidation,
-                    trim/call zones, and available Finnhub signal fields.
+                    Clean candidate view. Add or edit potential positions, then use the locked outputs — live price, buy zone, call zone, and combined FORGE Score — to prioritize adds and promotions.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -2315,21 +2401,12 @@ export default function ForgeDashboard() {
                         "Rank",
                         "Ticker",
                         "Name",
-                        "Sleeve Fit",
+                        "Sleeve",
                         "Sector",
                         "Price",
                         "Buy Zone",
-                        "Anchor",
-                        "Stop",
-                        "Trim / Call",
-                        "TA",
+                        "Call Zone",
                         "Score",
-                        "Upside",
-                        "Revisions",
-                        "Momentum",
-                        "Quality",
-                        "Dispersion",
-                        "Notes",
                         "Status",
                         "",
                       ].map((h) => (
@@ -2347,15 +2424,33 @@ export default function ForgeDashboard() {
                       const ticker = normalizeTicker(s.ticker);
                       const owned = ownedTickers.has(s.ticker.toUpperCase());
                       const live = liveQuotes[ticker];
-                      const sig = signalData[ticker];
+                      const ta = technicalData[ticker];
+                      const displayTa = displayTaFields(s, ta);
+                      const inBuyZone =
+                        displayTa.price > 0 &&
+                        displayTa.buyZoneLow > 0 &&
+                        displayTa.buyZoneHigh > 0 &&
+                        displayTa.price >= displayTa.buyZoneLow &&
+                        displayTa.price <= displayTa.buyZoneHigh;
+                      const inTrimZone =
+                        displayTa.price > 0 &&
+                        displayTa.trimLow > 0 &&
+                        displayTa.price >= displayTa.trimLow;
+                      const combinedScore = calculateForgeSignalScore({
+                        ...s,
+                        price: displayTa.price,
+                        buyZoneLow: displayTa.buyZoneLow,
+                        buyZoneHigh: displayTa.buyZoneHigh,
+                        stopLevel: displayTa.stopLevel,
+                        trimLow: displayTa.trimLow,
+                        trimHigh: displayTa.trimHigh,
+                        taConfidence: displayTa.confidence,
+                      });
                       return (
-                        <tr
-                          key={`${s.ticker || "bench"}-${index}`}
-                          className="border-b border-[#E5D8A8] align-top"
-                        >
+                        <tr key={`${s.ticker || "bench"}-${index}`} className="border-b border-[#E5D8A8] align-top">
                           <td className="p-2">
                             <input
-                              className="w-20 border border-[#E5D8A8] p-2 font-black"
+                              className="w-14 border border-[#E5D8A8] p-2 font-black"
                               type="number"
                               value={s.rank}
                               onChange={(e) =>
@@ -2369,7 +2464,7 @@ export default function ForgeDashboard() {
                           </td>
                           <td className="p-2">
                             <input
-                              className="w-24 border border-[#E5D8A8] p-2 font-black"
+                              className="w-20 border border-[#E5D8A8] p-2 font-black"
                               value={s.ticker}
                               onChange={(e) =>
                                 updateBenchCandidate(
@@ -2382,7 +2477,7 @@ export default function ForgeDashboard() {
                           </td>
                           <td className="p-2">
                             <input
-                              className="w-56 border border-[#E5D8A8] p-2"
+                              className="w-48 border border-[#E5D8A8] p-2"
                               value={s.name}
                               onChange={(e) =>
                                 updateBenchCandidate(
@@ -2395,7 +2490,7 @@ export default function ForgeDashboard() {
                           </td>
                           <td className="p-2">
                             <select
-                              className="w-36 border border-[#E5D8A8] p-2"
+                              className="w-28 border border-[#E5D8A8] p-2"
                               value={s.sleeveFit}
                               onChange={(e) =>
                                 updateBenchCandidate(
@@ -2411,7 +2506,7 @@ export default function ForgeDashboard() {
                           </td>
                           <td className="p-2">
                             <input
-                              className="w-44 border border-[#E5D8A8] p-2"
+                              className="w-36 border border-[#E5D8A8] p-2"
                               value={s.sector}
                               onChange={(e) =>
                                 updateBenchCandidate(
@@ -2423,249 +2518,36 @@ export default function ForgeDashboard() {
                             />
                           </td>
                           <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={s.price}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "price",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {live ? (
-                              <div className="live-label mt-1 font-bold text-[#067647]">
-                                LIVE{" "}
-                                {formatSignedPercentPoints(live.changePercent)}
-                              </div>
-                            ) : null}
+                            {valueBox(
+                              formatCurrencyTable(displayTa.price || s.price),
+                              live
+                                ? `LIVE ${formatSignedPercentPoints(live.changePercent)}`
+                                : "STORED",
+                              live ? "positive" : "neutral",
+                            )}
                           </td>
                           <td className="p-2">
-                            <div className="zone-pair flex gap-1">
-                              <input
-                                className="w-20 border border-[#E5D8A8] p-2"
-                                type="number"
-                                step="0.01"
-                                value={s.buyZoneLow ?? 0}
-                                onChange={(e) =>
-                                  updateBenchCandidate(
-                                    index,
-                                    "buyZoneLow",
-                                    parseNumber(e.target.value),
-                                  )
-                                }
-                              />
-                              <input
-                                className="w-20 border border-[#E5D8A8] p-2"
-                                type="number"
-                                step="0.01"
-                                value={s.buyZoneHigh ?? 0}
-                                onChange={(e) =>
-                                  updateBenchCandidate(
-                                    index,
-                                    "buyZoneHigh",
-                                    parseNumber(e.target.value),
-                                  )
-                                }
-                              />
-                            </div>
-                            {s.price >= (s.buyZoneLow ?? 0) && s.price <= (s.buyZoneHigh ?? 0) && s.buyZoneLow > 0 ? (
-                              <div className="live-label mt-1 font-black text-[#067647]">IN ZONE</div>
-                            ) : null}
+                            {zoneBox(
+                              displayTa.buyZoneLow,
+                              displayTa.buyZoneHigh,
+                              inBuyZone ? "IN ZONE" : "AUTO",
+                              inBuyZone ? "positive" : "neutral",
+                            )}
                           </td>
                           <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2"
-                              type="number"
-                              step="0.01"
-                              value={s.buyAnchor ?? 0}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "buyAnchor",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
+                            {zoneBox(
+                              displayTa.trimLow,
+                              displayTa.trimHigh,
+                              inTrimZone ? "COVER / TRIM" : "AUTO",
+                              inTrimZone ? "warning" : "neutral",
+                            )}
                           </td>
                           <td className="p-2">
-                            <input
-                              className="w-24 border border-[#E5D8A8] p-2"
-                              type="number"
-                              step="0.01"
-                              value={s.stopLevel ?? 0}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "stopLevel",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {s.stopLevel > 0 && s.price < s.stopLevel ? (
-                              <div className="live-label mt-1 font-black text-[#B42318]">BROKEN</div>
-                            ) : null}
-                          </td>
-                          <td className="p-2">
-                            <div className="zone-pair flex gap-1">
-                              <input
-                                className="w-20 border border-[#E5D8A8] p-2"
-                                type="number"
-                                step="0.01"
-                                value={s.trimLow ?? 0}
-                                onChange={(e) =>
-                                  updateBenchCandidate(
-                                    index,
-                                    "trimLow",
-                                    parseNumber(e.target.value),
-                                  )
-                                }
-                              />
-                              <input
-                                className="w-20 border border-[#E5D8A8] p-2"
-                                type="number"
-                                step="0.01"
-                                value={s.trimHigh ?? 0}
-                                onChange={(e) =>
-                                  updateBenchCandidate(
-                                    index,
-                                    "trimHigh",
-                                    parseNumber(e.target.value),
-                                  )
-                                }
-                              />
-                            </div>
-                            {s.trimLow > 0 && s.price >= s.trimLow ? (
-                              <div className="mt-1 text-[10px] font-black text-[#C9A84C]">CALL/TRIM ZONE</div>
-                            ) : null}
-                          </td>
-                          <td className="p-2">
-                            <select
-                              className="w-28 border border-[#E5D8A8] p-2"
-                              value={s.taConfidence ?? "Manual"}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "taConfidence",
-                                  e.target.value as TaConfidence,
-                                )
-                              }
-                            >
-                              <option>Manual</option>
-                              <option>Low</option>
-                              <option>Medium</option>
-                              <option>High</option>
-                            </select>
-                            <div className="mt-1 max-w-48 text-[10px] font-bold text-[#344054]">
-                              {s.taNotes || technicalData[ticker]?.trendState || "TA pending"}
-                            </div>
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={s.signalScore}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "signalScore",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {autoTag(Boolean(sig), "CALC")}
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              step="0.01"
-                              value={s.upside}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "upside",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {autoTag(sig?.upside !== null && sig?.upside !== undefined)}
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={s.revisionScore}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "revisionScore",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {autoTag(sig?.recommendationScore !== null && sig?.recommendationScore !== undefined, "RECO")}
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={s.momentumScore}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "momentumScore",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {autoTag(sig?.momentumScore !== null && sig?.momentumScore !== undefined)}
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              value={s.qualityScore}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "qualityScore",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {autoTag(sig?.qualityScore !== null && sig?.qualityScore !== undefined)}
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="w-20 border border-[#E5D8A8] p-2"
-                              type="number"
-                              step="0.01"
-                              value={s.dispersion}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "dispersion",
-                                  parseNumber(e.target.value),
-                                )
-                              }
-                            />
-                            {autoTag(sig?.dispersion !== null && sig?.dispersion !== undefined)}
-                          </td>
-                          <td className="p-2">
-                            <textarea
-                              className="h-16 w-64 border border-[#E5D8A8] p-2"
-                              value={s.notes}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "notes",
-                                  e.target.value,
-                                )
-                              }
-                            />
+                            {valueBox(
+                              formatMetric(combinedScore),
+                              scoreLabel(combinedScore),
+                              scoreTone(combinedScore),
+                            )}
                           </td>
                           <td className="p-3">
                             <span
@@ -2730,12 +2612,11 @@ export default function ForgeDashboard() {
                 {metricCard("Bench", "Top 50", "Replacement pool")}
               </div>
               <div className="mt-5 border border-[#E5D8A8] bg-[#F0EBD8] p-4 text-sm leading-6 text-[#344054]">
-                Current build: Refresh Live Data updates price, trailing-price
-                momentum, calculated FORGE Score, and any Finnhub-provided
-                target/upside, recommendation trend, quality proxy, target
-                dispersion, and technical buy-zone / trim-zone data. Fields remain
-                editable because Finnhub coverage can be incomplete or stale, and
-                proprietary TradingView indicators still need manual verification.
+                Current build: the main Bench and Holdings pages intentionally
+                expose fewer fields. Refresh Live Data still updates the underlying
+                upside, revisions, momentum, quality, and technical inputs, but the
+                dashboard rolls them into one locked 0–100 FORGE Score plus Buy Zone
+                and Call Zone outputs.
               </div>
               <div className="mt-5 overflow-x-auto">
                 <table className="w-full min-w-[980px] border-collapse text-sm">
