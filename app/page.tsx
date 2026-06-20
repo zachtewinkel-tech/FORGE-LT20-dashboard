@@ -7,6 +7,7 @@ type Tab =
   | "actionItems"
   | "holdings"
   | "bench"
+  | "tradeLog"
   | "sp500Screener"
   | "forgeSignal"
   | "taxLots"
@@ -28,6 +29,86 @@ type ActionState =
   | "BUY BACK"
   | "TAX HARVEST"
   | "DAF CANDIDATE";
+
+
+type TradeType =
+  | "deposit"
+  | "withdrawal"
+  | "dividend"
+  | "interest_expense"
+  | "fee"
+  | "buy_stock"
+  | "sell_stock"
+  | "buy_to_open_call"
+  | "sell_to_close_call"
+  | "sell_to_open_call"
+  | "buy_to_close_call"
+  | "buy_to_open_put"
+  | "sell_to_close_put"
+  | "sell_to_open_put"
+  | "buy_to_close_put"
+  // legacy values from older FORGE builds; preserved so old browser-stored trades still rebuild correctly
+  | "buy"
+  | "sell";
+
+type Trade = {
+  id: string;
+  createdAt: string;
+  date: string;
+  type: TradeType;
+  ticker: string;
+  amount: number;
+  shares: number;
+  price: number;
+  contracts: number;
+  expiry: string;
+  strike: number;
+  notes: string;
+};
+
+type TradeFormState = {
+  date: string;
+  type: TradeType;
+  ticker: string;
+  amount: string;
+  shares: string;
+  price: string;
+  contracts: string;
+  expiry: string;
+  strike: string;
+  notes: string;
+};
+
+type OpenOptionPosition = {
+  key: string;
+  ticker: string;
+  side: "CALL" | "PUT";
+  direction: "LONG" | "SHORT";
+  expiry: string;
+  strike: number;
+  contracts: number;
+  avgPremium: number;
+  marketValue: number;
+  openedDate: string;
+};
+
+type TradeStats = {
+  cashImpact: number;
+  deposits: number;
+  withdrawals: number;
+  stockTradeCount: number;
+  optionTradeCount: number;
+  realizedOptionPnl: number;
+  openOptions: OpenOptionPosition[];
+};
+
+type PerformanceSettings = {
+  startingForgeCapital: number;
+  masterMonthlyMarginInterest: number;
+  forgeAssignedEquityCapital: number;
+  masterTotalStrategyDebits: number;
+  allocateMarginByDebitShare: boolean;
+};
 
 type Holding = {
   id: string;
@@ -59,6 +140,11 @@ type Holding = {
   taConfidence: TaConfidence;
   taNotes: string;
   notes: string;
+  instrumentType?: "Stock" | "Option";
+  optionSide?: "CALL" | "PUT";
+  optionDirection?: "LONG" | "SHORT";
+  optionExpiry?: string;
+  optionStrike?: number;
 };
 
 type BenchCandidate = {
@@ -237,6 +323,7 @@ const TAB_LABELS: Record<Tab, string> = {
   actionItems: "Action Items",
   holdings: "Holdings",
   bench: "Bench",
+  tradeLog: "Trade Log",
   sp500Screener: "S&P 500 Screener",
   forgeSignal: "FORGE Signal",
   taxLots: "Tax Lots",
@@ -250,11 +337,13 @@ const TAB_LABELS: Record<Tab, string> = {
 const STORAGE_KEYS = {
   activeTab: "forgeLt20ActiveTab.v1",
   holdings: "forgeLt20Holdings.v1",
+  trades: "forgeLt20Trades.v1",
   bench: "forgeLt20Bench.v1",
   calls: "forgeLt20CoveredCalls.v1",
   settings: "forgeLt20Settings.v1",
   liveSettings: "forgeLt20LiveSettings.v1",
   screener: "forgeLt20Screener.v1",
+  performanceSettings: "forgeLt20PerformanceSettings.v1",
 };
 
 const DEFAULT_TA_FIELDS = {
@@ -1135,9 +1224,235 @@ function parseNumber(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+
+const DEFAULT_PERFORMANCE_SETTINGS: PerformanceSettings = {
+  startingForgeCapital: 0,
+  masterMonthlyMarginInterest: 0,
+  forgeAssignedEquityCapital: 0,
+  masterTotalStrategyDebits: 0,
+  allocateMarginByDebitShare: true,
+};
+
+function makeTradeId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}`;
+}
+
+function makeEmptyTradeForm(): TradeFormState {
+  return {
+    date: todayIsoDate(),
+    type: "buy_stock",
+    ticker: "",
+    amount: "",
+    shares: "",
+    price: "",
+    contracts: "",
+    expiry: "",
+    strike: "",
+    notes: "",
+  };
+}
+
+function tradeTypeLabel(type: TradeType): string {
+  const labels: Record<TradeType, string> = {
+    deposit: "Deposit",
+    withdrawal: "Withdrawal",
+    dividend: "Dividend Received",
+    interest_expense: "Interest Expense",
+    fee: "Fee / Expense",
+    buy_stock: "Buy Stock",
+    sell_stock: "Sell Stock",
+    buy_to_open_call: "Buy to Open Call",
+    sell_to_close_call: "Sell to Close Call",
+    sell_to_open_call: "Sell to Open Call",
+    buy_to_close_call: "Buy to Close Call",
+    buy_to_open_put: "Buy to Open Put",
+    sell_to_close_put: "Sell to Close Put",
+    sell_to_open_put: "Sell to Open Put",
+    buy_to_close_put: "Buy to Close Put",
+    buy: "Buy Stock",
+    sell: "Sell Stock",
+  };
+  return labels[type] ?? type;
+}
+
+function isCashTrade(type: TradeType): boolean {
+  return type === "deposit" || type === "withdrawal" || type === "dividend" || type === "interest_expense" || type === "fee";
+}
+
+function isStockTrade(type: TradeType): boolean {
+  return type === "buy_stock" || type === "sell_stock" || type === "buy" || type === "sell";
+}
+
+function isBuyStockTrade(type: TradeType): boolean {
+  return type === "buy_stock" || type === "buy";
+}
+
+function isSellStockTrade(type: TradeType): boolean {
+  return type === "sell_stock" || type === "sell";
+}
+
+function isOptionTrade(type: TradeType): boolean {
+  return !isCashTrade(type) && !isStockTrade(type);
+}
+
+function optionSideFromTrade(type: TradeType): "CALL" | "PUT" | null {
+  if (type.includes("call")) return "CALL";
+  if (type.includes("put")) return "PUT";
+  return null;
+}
+
+function optionDirectionFromTrade(type: TradeType): "LONG" | "SHORT" | null {
+  if (type.startsWith("buy_to_open") || type.startsWith("sell_to_close")) return "LONG";
+  if (type.startsWith("sell_to_open") || type.startsWith("buy_to_close")) return "SHORT";
+  return null;
+}
+
+function isOpeningOptionTrade(type: TradeType): boolean {
+  return type.startsWith("buy_to_open") || type.startsWith("sell_to_open");
+}
+
+function optionKey(ticker: string, side: "CALL" | "PUT", direction: "LONG" | "SHORT", expiry: string, strike: number): string {
+  return `${normalizeTicker(ticker)}-${expiry}-${strike}-${side}-${direction}`;
+}
+
+function buildTradeFromForm(form: TradeFormState): Trade | null {
+  const type = form.type;
+  const ticker = normalizeTicker(form.ticker);
+  const amount = roundNumber(parseNumber(form.amount), 2);
+  const shares = roundNumber(parseNumber(form.shares), 4);
+  const price = roundNumber(parseNumber(form.price), 4);
+  const contracts = roundNumber(parseNumber(form.contracts), 0);
+  const strike = roundNumber(parseNumber(form.strike), 4);
+
+  if (isCashTrade(type) && amount <= 0) return null;
+  if (isStockTrade(type) && (!ticker || shares <= 0 || price <= 0)) return null;
+  if (isOptionTrade(type) && (!ticker || contracts <= 0 || price < 0 || strike <= 0 || !form.expiry)) return null;
+
+  return {
+    id: makeTradeId(),
+    createdAt: new Date().toISOString(),
+    date: form.date || todayIsoDate(),
+    type,
+    ticker: isCashTrade(type) && type !== "dividend" ? "" : ticker,
+    amount: isCashTrade(type) ? amount : 0,
+    shares: isStockTrade(type) ? shares : 0,
+    price: isStockTrade(type) || isOptionTrade(type) ? price : 0,
+    contracts: isOptionTrade(type) ? contracts : 0,
+    expiry: isOptionTrade(type) ? form.expiry : "",
+    strike: isOptionTrade(type) ? strike : 0,
+    notes: form.notes.trim(),
+  };
+}
+
+function describeTrade(trade: Trade): string {
+  if (trade.type === "deposit") return `Deposit ${formatCurrency(trade.amount)}`;
+  if (trade.type === "withdrawal") return `Withdrawal ${formatCurrency(trade.amount)}`;
+  if (trade.type === "dividend") return `${trade.ticker ? `${trade.ticker} ` : ""}dividend ${formatCurrency(trade.amount)}`;
+  if (trade.type === "interest_expense") return `Interest expense ${formatCurrency(trade.amount)}`;
+  if (trade.type === "fee") return `Fee / expense ${formatCurrency(trade.amount)}`;
+  if (isBuyStockTrade(trade.type)) return `Buy ${formatMetric(trade.shares, 0)} ${trade.ticker} @ ${formatCurrencyTable(trade.price)}`;
+  if (isSellStockTrade(trade.type)) return `Sell ${formatMetric(trade.shares, 0)} ${trade.ticker} @ ${formatCurrencyTable(trade.price)}`;
+  const side = optionSideFromTrade(trade.type) ?? "CALL";
+  const suffix = side === "CALL" ? "C" : "P";
+  return `${tradeTypeLabel(trade.type)} ${formatMetric(trade.contracts, 0)} ${trade.ticker} ${trade.expiry} $${trade.strike}${suffix} @ ${formatCurrencyTable(trade.price)}`;
+}
+
+function tradeCashImpact(trade: Trade): number {
+  if (trade.type === "deposit" || trade.type === "dividend") return trade.amount;
+  if (trade.type === "withdrawal" || trade.type === "interest_expense" || trade.type === "fee") return -trade.amount;
+  if (isBuyStockTrade(trade.type)) return -(trade.shares * trade.price);
+  if (isSellStockTrade(trade.type)) return trade.shares * trade.price;
+  const premium = trade.contracts * trade.price * 100;
+  if (trade.type.startsWith("buy_")) return -premium;
+  return premium;
+}
+
+function externalFlowAmount(trade: Trade): number {
+  if (trade.type === "deposit") return trade.amount;
+  if (trade.type === "withdrawal") return -trade.amount;
+  return 0;
+}
+
+function calculateTradeStats(trades: Trade[]): TradeStats {
+  const sorted = [...trades].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt),
+  );
+  const stats: TradeStats = {
+    cashImpact: 0,
+    deposits: 0,
+    withdrawals: 0,
+    stockTradeCount: 0,
+    optionTradeCount: 0,
+    realizedOptionPnl: 0,
+    openOptions: [],
+  };
+  const optionMap = new Map<string, OpenOptionPosition>();
+
+  for (const trade of sorted) {
+    const impact = tradeCashImpact(trade);
+    stats.cashImpact = roundNumber(stats.cashImpact + impact, 2);
+    if (trade.type === "deposit") stats.deposits = roundNumber(stats.deposits + trade.amount, 2);
+    if (trade.type === "withdrawal") stats.withdrawals = roundNumber(stats.withdrawals + trade.amount, 2);
+    if (isStockTrade(trade.type)) stats.stockTradeCount += 1;
+    if (!isOptionTrade(trade.type)) continue;
+
+    stats.optionTradeCount += 1;
+    const side = optionSideFromTrade(trade.type);
+    const direction = optionDirectionFromTrade(trade.type);
+    if (!side || !direction) continue;
+    const key = optionKey(trade.ticker, side, direction, trade.expiry, trade.strike);
+    const existing = optionMap.get(key) ?? {
+      key,
+      ticker: trade.ticker,
+      side,
+      direction,
+      expiry: trade.expiry,
+      strike: trade.strike,
+      contracts: 0,
+      avgPremium: 0,
+      marketValue: 0,
+      openedDate: trade.date,
+    };
+
+    if (isOpeningOptionTrade(trade.type)) {
+      const existingPremiumCost = existing.avgPremium * existing.contracts;
+      const nextContracts = existing.contracts + trade.contracts;
+      existing.avgPremium = nextContracts > 0
+        ? roundNumber((existingPremiumCost + trade.price * trade.contracts) / nextContracts, 4)
+        : trade.price;
+      existing.contracts = nextContracts;
+      if (trade.date < existing.openedDate) existing.openedDate = trade.date;
+      existing.marketValue = roundNumber(existing.contracts * existing.avgPremium * 100, 2);
+      optionMap.set(key, existing);
+    } else {
+      const closingContracts = Math.min(existing.contracts, trade.contracts);
+      if (closingContracts > 0) {
+        const pnlPerContract = direction === "LONG"
+          ? trade.price - existing.avgPremium
+          : existing.avgPremium - trade.price;
+        stats.realizedOptionPnl = roundNumber(stats.realizedOptionPnl + pnlPerContract * closingContracts * 100, 2);
+      }
+      existing.contracts = Math.max(0, existing.contracts - trade.contracts);
+      existing.marketValue = roundNumber(existing.contracts * existing.avgPremium * 100, 2);
+      if (existing.contracts > 0) optionMap.set(key, existing);
+      else optionMap.delete(key);
+    }
+  }
+
+  stats.openOptions = Array.from(optionMap.values()).filter((position) => position.contracts > 0);
+  return stats;
+}
+
+
 export default function ForgeDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("dailyBrief");
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [tradeForm, setTradeForm] = useState<TradeFormState>(makeEmptyTradeForm());
+  const [tradeMessage, setTradeMessage] = useState("");
+  const [performanceSettings, setPerformanceSettings] = useState<PerformanceSettings>(DEFAULT_PERFORMANCE_SETTINGS);
   const [benchCandidates, setBenchCandidates] =
     useState<BenchCandidate[]>(DEFAULT_BENCH);
   const [openCalls, setOpenCalls] = useState<CoveredCall[]>([]);
@@ -1170,6 +1485,8 @@ export default function ForgeDashboard() {
     try {
       const savedActiveTab = localStorage.getItem(STORAGE_KEYS.activeTab);
       const savedHoldings = localStorage.getItem(STORAGE_KEYS.holdings);
+      const savedTrades = localStorage.getItem(STORAGE_KEYS.trades);
+      const savedPerformanceSettings = localStorage.getItem(STORAGE_KEYS.performanceSettings);
       const savedBench = localStorage.getItem(STORAGE_KEYS.bench);
       const savedCalls = localStorage.getItem(STORAGE_KEYS.calls);
       const savedSettings = localStorage.getItem(STORAGE_KEYS.settings);
@@ -1178,9 +1495,11 @@ export default function ForgeDashboard() {
 
       if (savedActiveTab) {
         const parsedTab = JSON.parse(savedActiveTab) as Tab;
-        if (parsedTab in TAB_LABELS) setActiveTab(parsedTab);
+        if (parsedTab in TAB_LABELS && parsedTab !== "coveredCalls") setActiveTab(parsedTab);
       }
-      if (savedHoldings) setHoldings(JSON.parse(savedHoldings) as Holding[]);
+      // Holdings are derived from the Trade Log, not loaded as a separate source of truth.
+      if (savedTrades) setTrades(JSON.parse(savedTrades) as Trade[]);
+      if (savedPerformanceSettings) setPerformanceSettings({ ...DEFAULT_PERFORMANCE_SETTINGS, ...(JSON.parse(savedPerformanceSettings) as Partial<PerformanceSettings>) });
       if (savedBench)
         setBenchCandidates(JSON.parse(savedBench) as BenchCandidate[]);
       if (savedCalls) setOpenCalls(JSON.parse(savedCalls) as CoveredCall[]);
@@ -1223,6 +1542,16 @@ export default function ForgeDashboard() {
 
   useEffect(() => {
     if (!hydrated) return;
+    rebuildHoldingsFromTradeLog(trades);
+    const cashMargin = calculateCashMarginFromTrades(trades);
+    setCash(cashMargin.cash);
+    setMarginDebt(cashMargin.marginDebt);
+    // Run once after browser storage has loaded so Holdings always comes from Trade Log.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem(STORAGE_KEYS.activeTab, JSON.stringify(activeTab));
   }, [activeTab, hydrated]);
 
@@ -1230,6 +1559,16 @@ export default function ForgeDashboard() {
     if (!hydrated) return;
     localStorage.setItem(STORAGE_KEYS.holdings, JSON.stringify(holdings));
   }, [holdings, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem(STORAGE_KEYS.trades, JSON.stringify(trades));
+  }, [hydrated, trades]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem(STORAGE_KEYS.performanceSettings, JSON.stringify(performanceSettings));
+  }, [hydrated, performanceSettings]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1468,6 +1807,20 @@ export default function ForgeDashboard() {
       longMarketValue > 0 ? opportunisticValue / longMarketValue : 0;
     const regime = classifyRegime(spy, ma50, ma200);
     const leverageGap = regime.target - currentLeverage;
+    const forgeInternalDebit = Math.max(
+      0,
+      longMarketValue - performanceSettings.forgeAssignedEquityCapital,
+    );
+    const assignedAnnualFinancingCost =
+      performanceSettings.allocateMarginByDebitShare &&
+      performanceSettings.masterMonthlyMarginInterest > 0 &&
+      performanceSettings.masterTotalStrategyDebits > 0
+        ? performanceSettings.masterMonthlyMarginInterest *
+          12 *
+          (forgeInternalDebit / performanceSettings.masterTotalStrategyDebits)
+        : marginDebt * (marginRate / 100);
+    const netPnlAfterFinancing = totalPnl - assignedAnnualFinancingCost;
+    const netContributions = trades.reduce((sum, trade) => sum + externalFlowAmount(trade), 0);
 
     const enrichedHoldings: HoldingRow[] = holdings.map((h) => {
       const marketValue = h.shares * h.price;
@@ -1566,9 +1919,13 @@ export default function ForgeDashboard() {
       enrichedHoldings,
       sectorWeights,
       callAlerts,
-      annualFinancingCost: marginDebt * (marginRate / 100),
+      forgeInternalDebit,
+      assignedAnnualFinancingCost,
+      annualFinancingCost: assignedAnnualFinancingCost,
+      netPnlAfterFinancing,
+      netContributions,
     };
-  }, [cash, holdings, ma50, ma200, marginDebt, marginRate, openCalls, spy]);
+  }, [cash, holdings, ma50, ma200, marginDebt, marginRate, openCalls, performanceSettings, spy, trades]);
 
   const actionItems = useMemo(() => {
     const items: Array<{ action: ActionState; title: string; detail: string }> =
@@ -1578,7 +1935,7 @@ export default function ForgeDashboard() {
         action: "BUY",
         title: "Build initial FORGE LT20 portfolio",
         detail:
-          "Portfolio is empty. Use the Bench tab to promote candidates into 15 Core and 5 Opportunistic holdings, then enter shares, cost basis, current price, and holding period.",
+          "Portfolio is empty. Use Bench and the S&P 500 Screener to decide candidates, then enter Buy trades in the Trade Log to create holdings.",
       });
       return items;
     }
@@ -1634,64 +1991,316 @@ export default function ForgeDashboard() {
         ];
   }, [holdings.length, optionCandidates, snapshot]);
 
-  function updateHolding(
-    id: string,
-    field: keyof Holding,
-    value: string | number | boolean,
-  ) {
-    setHoldings((prev) =>
-      prev.map((h) => {
-        if (h.id !== id) return h;
-        const next = { ...h, [field]: value } as Holding;
-        if (field === "ticker" && typeof value === "string") {
-          const meta = tickerMetadata.get(normalizeTicker(value));
-          if (meta) {
-            next.name = next.name || meta.name;
-            next.sleeve = meta.sleeve;
-            next.sector = meta.sector;
-            next.forgeRank = meta.rank ?? next.forgeRank;
-            next.signalScore = meta.score ?? next.signalScore;
-          }
+  function calculateCashMarginFromTrades(nextTrades: Trade[]) {
+    let nextCash = 0;
+    let nextMarginDebt = 0;
+    const sorted = [...nextTrades].sort(
+      (a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt),
+    );
+
+    for (const trade of sorted) {
+      const impact = tradeCashImpact(trade);
+      if (impact >= 0) {
+        const debtPaydown = Math.min(nextMarginDebt, impact);
+        nextMarginDebt = roundNumber(nextMarginDebt - debtPaydown, 2);
+        nextCash = roundNumber(nextCash + impact - debtPaydown, 2);
+      } else {
+        const needed = Math.abs(impact);
+        if (nextCash >= needed) {
+          nextCash = roundNumber(nextCash - needed, 2);
+        } else {
+          nextMarginDebt = roundNumber(nextMarginDebt + needed - nextCash, 2);
+          nextCash = 0;
         }
-        return next;
-      }),
+      }
+    }
+
+    return { cash: nextCash, marginDebt: nextMarginDebt };
+  }
+
+  function updateTradeForm(
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) {
+    const { name, value } = event.target;
+    setTradeForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function holdingPositionKey(holding: Pick<Holding, "ticker" | "instrumentType" | "optionSide" | "optionDirection" | "optionExpiry" | "optionStrike">): string {
+    const ticker = normalizeTicker(holding.ticker);
+    if (holding.instrumentType === "Option") {
+      return `OPT:${ticker}:${holding.optionDirection ?? "LONG"}:${holding.optionSide ?? "CALL"}:${holding.optionExpiry ?? ""}:${holding.optionStrike ?? 0}`;
+    }
+    return `STK:${ticker}`;
+  }
+
+  function rebuildHoldingsFromTradeLog(
+    nextTrades: Trade[],
+    preservedHoldings: Holding[] = holdings,
+  ) {
+    type StockLot = { shares: number; cost: number; date: string };
+
+    const preservedByKey = new Map(
+      preservedHoldings
+        .filter((h) => normalizeTicker(h.ticker))
+        .map((h) => [holdingPositionKey(h), h]),
+    );
+    const lotsByTicker = new Map<string, StockLot[]>();
+    const lastTradePriceByTicker = new Map<string, number>();
+
+    const sortedStockTrades = nextTrades
+      .filter((trade) => isStockTrade(trade.type) && normalizeTicker(trade.ticker))
+      .sort(
+        (a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt),
+      );
+
+    for (const trade of sortedStockTrades) {
+      const ticker = normalizeTicker(trade.ticker);
+      const lots = lotsByTicker.get(ticker) ?? [];
+      lastTradePriceByTicker.set(ticker, trade.price);
+
+      if (isBuyStockTrade(trade.type)) {
+        lots.push({ shares: trade.shares, cost: trade.price, date: trade.date });
+        lotsByTicker.set(ticker, lots);
+        continue;
+      }
+
+      let sharesToSell = trade.shares;
+      const remainingLots: StockLot[] = [];
+      for (const lot of lots) {
+        if (sharesToSell <= 0) {
+          remainingLots.push(lot);
+          continue;
+        }
+        const soldFromLot = Math.min(lot.shares, sharesToSell);
+        const remainingShares = roundNumber(lot.shares - soldFromLot, 6);
+        sharesToSell = roundNumber(sharesToSell - soldFromLot, 6);
+        if (remainingShares > 0) {
+          remainingLots.push({ ...lot, shares: remainingShares });
+        }
+      }
+      lotsByTicker.set(ticker, remainingLots);
+    }
+
+    const stockHoldings = Array.from(lotsByTicker.entries())
+      .map(([ticker, lots]) => {
+        const activeLots = lots.filter((lot) => lot.shares > 0);
+        const shares = roundNumber(activeLots.reduce((sum, lot) => sum + lot.shares, 0), 6);
+        if (shares <= 0) return null;
+
+        const totalCost = activeLots.reduce((sum, lot) => sum + lot.shares * lot.cost, 0);
+        const averageCost = roundNumber(totalCost / shares, 4);
+        const purchaseDate = activeLots.map((lot) => lot.date).sort((a, b) => a.localeCompare(b))[0] ?? todayIsoDate();
+        const meta = metadataForTicker(ticker);
+        const existing = preservedByKey.get(`STK:${ticker}`);
+        const live = liveQuotes[ticker];
+        const ta = technicalData[ticker];
+        const signal = signalData[ticker];
+        const bench = benchCandidates.find((b) => normalizeTicker(b.ticker) === ticker);
+        const seed = existing ?? blankHolding();
+        const nextHolding: Holding = {
+          ...seed,
+          id: existing?.id ?? makeTradeId(),
+          instrumentType: "Stock",
+          optionSide: undefined,
+          optionDirection: undefined,
+          optionExpiry: undefined,
+          optionStrike: undefined,
+          ticker,
+          name: existing?.name || meta?.name || bench?.name || ticker,
+          sleeve: existing?.sleeve ?? meta?.sleeve ?? bench?.sleeveFit ?? "Core",
+          sector: meta?.sector || existing?.sector || bench?.sector || "Unclassified",
+          shares,
+          cost: averageCost,
+          price: live?.price ?? existing?.price ?? bench?.price ?? lastTradePriceByTicker.get(ticker) ?? averageCost,
+          forgeRank: existing?.forgeRank ?? meta?.rank ?? bench?.rank ?? 999,
+          signalScore: signal?.recommendationScore ?? existing?.signalScore ?? meta?.score ?? bench?.signalScore ?? 50,
+          upside: signal?.upside ?? existing?.upside ?? bench?.upside ?? 0,
+          revisionScore: signal?.recommendationScore ?? existing?.revisionScore ?? bench?.revisionScore ?? 50,
+          momentumScore: signal?.momentumScore ?? existing?.momentumScore ?? bench?.momentumScore ?? 50,
+          qualityScore: signal?.qualityScore ?? existing?.qualityScore ?? bench?.qualityScore ?? 50,
+          dispersion: signal?.dispersion ?? existing?.dispersion ?? bench?.dispersion ?? 0,
+          purchaseDate,
+          daysHeld: daysHeldFromPurchaseDate(purchaseDate, existing?.daysHeld ?? 0),
+          above200dma: ta?.above200dma ?? existing?.above200dma ?? true,
+          technicalExtension: ta?.technicalExtension ?? existing?.technicalExtension ?? 0,
+          buyZoneLow: ta?.buyZoneLow ?? existing?.buyZoneLow ?? bench?.buyZoneLow ?? 0,
+          buyZoneHigh: ta?.buyZoneHigh ?? existing?.buyZoneHigh ?? bench?.buyZoneHigh ?? 0,
+          buyAnchor: ta?.buyAnchor ?? existing?.buyAnchor ?? bench?.buyAnchor ?? 0,
+          stopLevel: ta?.stopLevel ?? existing?.stopLevel ?? bench?.stopLevel ?? 0,
+          trimLow: ta?.trimLow ?? existing?.trimLow ?? bench?.trimLow ?? 0,
+          trimHigh: ta?.trimHigh ?? existing?.trimHigh ?? bench?.trimHigh ?? 0,
+          taConfidence: ta?.confidence ?? existing?.taConfidence ?? bench?.taConfidence ?? "Manual",
+          taNotes: ta?.notes ?? existing?.taNotes ?? bench?.taNotes ?? "Created from Trade Log stock transactions.",
+          notes: existing?.notes || bench?.notes || "Created from Trade Log stock transactions.",
+        };
+        return { ...nextHolding, signalScore: calculateForgeSignalScore(nextHolding) };
+      })
+      .filter((holding): holding is Holding => holding !== null);
+
+    const optionHoldings = calculateTradeStats(nextTrades).openOptions.map((position) => {
+      const ticker = normalizeTicker(position.ticker);
+      const key = `OPT:${ticker}:${position.direction}:${position.side}:${position.expiry}:${position.strike}`;
+      const existing = preservedByKey.get(key);
+      const meta = metadataForTicker(ticker);
+      const seed = existing ?? blankHolding();
+      const signedPremium = position.direction === "SHORT" ? -position.avgPremium : position.avgPremium;
+      const suffix = position.side === "CALL" ? "C" : "P";
+      const optionName = `${ticker} ${position.expiry} $${position.strike}${suffix} ${position.direction}`;
+
+      return {
+        ...seed,
+        id: existing?.id ?? makeTradeId(),
+        instrumentType: "Option",
+        optionSide: position.side,
+        optionDirection: position.direction,
+        optionExpiry: position.expiry,
+        optionStrike: position.strike,
+        ticker,
+        name: existing?.name || optionName,
+        sleeve: existing?.sleeve ?? meta?.sleeve ?? "Opportunistic",
+        sector: "Option Overlay",
+        shares: position.contracts * 100,
+        cost: signedPremium,
+        price: signedPremium,
+        forgeRank: existing?.forgeRank ?? meta?.rank ?? 999,
+        signalScore: existing?.signalScore ?? meta?.score ?? 50,
+        purchaseDate: position.openedDate,
+        daysHeld: daysHeldFromPurchaseDate(position.openedDate, existing?.daysHeld ?? 0),
+        buyZoneLow: existing?.buyZoneLow ?? 0,
+        buyZoneHigh: existing?.buyZoneHigh ?? 0,
+        buyAnchor: existing?.buyAnchor ?? 0,
+        stopLevel: existing?.stopLevel ?? 0,
+        trimLow: existing?.trimLow ?? 0,
+        trimHigh: existing?.trimHigh ?? 0,
+        taConfidence: existing?.taConfidence ?? "Manual",
+        taNotes: existing?.taNotes || "Option position generated from Trade Log.",
+        notes: existing?.notes || "Open option position generated from Trade Log. Close or hedge it through the Trade Log.",
+      } as Holding;
+    });
+
+    const nextHoldings = [...stockHoldings, ...optionHoldings].sort((a, b) => {
+      const tickerCompare = a.ticker.localeCompare(b.ticker);
+      if (tickerCompare !== 0) return tickerCompare;
+      return holdingPositionKey(a).localeCompare(holdingPositionKey(b));
+    });
+
+    setHoldings(nextHoldings);
+  }
+
+  const tradeStats = useMemo(() => calculateTradeStats(trades), [trades]);
+
+  function submitTrade(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trade = buildTradeFromForm(tradeForm);
+    if (!trade) {
+      setTradeMessage("Enter the required fields for this trade type.");
+      return;
+    }
+    const nextTrades = [...trades, trade];
+    setTrades(nextTrades);
+    rebuildHoldingsFromTradeLog(nextTrades);
+    const cashMargin = calculateCashMarginFromTrades(nextTrades);
+    setCash(cashMargin.cash);
+    setMarginDebt(cashMargin.marginDebt);
+    setTradeForm((prev) => ({ ...makeEmptyTradeForm(), date: prev.date }));
+    setTradeMessage(`Added: ${describeTrade(trade)}`);
+  }
+
+  function deleteTrade(id: string) {
+    const nextTrades = trades.filter((trade) => trade.id !== id);
+    setTrades(nextTrades);
+    rebuildHoldingsFromTradeLog(nextTrades);
+    const cashMargin = calculateCashMarginFromTrades(nextTrades);
+    setCash(cashMargin.cash);
+    setMarginDebt(cashMargin.marginDebt);
+  }
+
+  function clearTrades() {
+    if (window.confirm("Clear the FORGE trade log from this browser? This will also clear trade-derived holdings.")) {
+      setTrades([]);
+      setHoldings([]);
+      setCash(0);
+      setMarginDebt(0);
+      setTradeMessage("");
+    }
+  }
+
+  function renderTradeSpecificInputs() {
+    if (isCashTrade(tradeForm.type)) {
+      return (
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block">
+            <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Amount</span>
+            <input
+              className="mt-2 w-full border border-[#E5D8A8] p-3"
+              name="amount"
+              type="number"
+              step="0.01"
+              value={tradeForm.amount}
+              onChange={updateTradeForm}
+            />
+          </label>
+          {tradeForm.type === "dividend" ? (
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Ticker</span>
+              <input
+                className="mt-2 w-full border border-[#E5D8A8] p-3 font-black uppercase"
+                name="ticker"
+                value={tradeForm.ticker}
+                onChange={updateTradeForm}
+                placeholder="AVGO"
+              />
+            </label>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (isStockTrade(tradeForm.type)) {
+      return (
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="block">
+            <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Ticker</span>
+            <input className="mt-2 w-full border border-[#E5D8A8] p-3 font-black uppercase" name="ticker" value={tradeForm.ticker} onChange={updateTradeForm} placeholder="AVGO" />
+          </label>
+          <label className="block">
+            <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Shares</span>
+            <input className="mt-2 w-full border border-[#E5D8A8] p-3" name="shares" type="number" step="0.0001" value={tradeForm.shares} onChange={updateTradeForm} />
+          </label>
+          <label className="block">
+            <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Price</span>
+            <input className="mt-2 w-full border border-[#E5D8A8] p-3" name="price" type="number" step="0.01" value={tradeForm.price} onChange={updateTradeForm} />
+          </label>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid gap-3 md:grid-cols-5">
+        <label className="block">
+          <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Ticker</span>
+          <input className="mt-2 w-full border border-[#E5D8A8] p-3 font-black uppercase" name="ticker" value={tradeForm.ticker} onChange={updateTradeForm} placeholder="AVGO" />
+        </label>
+        <label className="block">
+          <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Contracts</span>
+          <input className="mt-2 w-full border border-[#E5D8A8] p-3" name="contracts" type="number" step="1" value={tradeForm.contracts} onChange={updateTradeForm} />
+        </label>
+        <label className="block">
+          <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Expiration</span>
+          <input className="mt-2 w-full border border-[#E5D8A8] p-3" name="expiry" type="date" value={tradeForm.expiry} onChange={updateTradeForm} />
+        </label>
+        <label className="block">
+          <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Strike</span>
+          <input className="mt-2 w-full border border-[#E5D8A8] p-3" name="strike" type="number" step="0.01" value={tradeForm.strike} onChange={updateTradeForm} />
+        </label>
+        <label className="block">
+          <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Premium / Price</span>
+          <input className="mt-2 w-full border border-[#E5D8A8] p-3" name="price" type="number" step="0.01" value={tradeForm.price} onChange={updateTradeForm} />
+        </label>
+      </div>
     );
   }
 
-  function updateCall(
-    id: string,
-    field: keyof CoveredCall,
-    value: string | number | boolean,
-  ) {
-    setOpenCalls((prev) =>
-      prev.map((c) =>
-        c.id === id ? ({ ...c, [field]: value } as CoveredCall) : c,
-      ),
-    );
-  }
-
-  function updateBenchCandidate(
-    index: number,
-    field: keyof BenchCandidate,
-    value: string | number,
-  ) {
-    setBenchCandidates((prev) =>
-      prev.map((b, i) => {
-        if (i !== index) return b;
-        const next = { ...b, [field]: value } as BenchCandidate;
-        if (field === "ticker" && typeof value === "string") {
-          const meta = tickerMetadata.get(normalizeTicker(value));
-          if (meta) {
-            next.name = next.name || meta.name;
-            next.sleeveFit = meta.sleeve;
-            next.sector = meta.sector;
-            next.signalScore = meta.score ?? next.signalScore;
-          }
-        }
-        return next;
-      }),
-    );
-  }
 
   function mergeScreenerCandidates(
     current: ScreenerCandidate[],
@@ -1791,36 +2400,6 @@ export default function ForgeDashboard() {
     setActiveTab("bench");
   }
 
-  function addScreenerToHoldings(candidate: ScreenerCandidate) {
-    addScreenerToBench(candidate);
-    setTimeout(() => {
-      const benchCandidate: BenchCandidate = {
-        rank: 1,
-        ticker: normalizeTicker(candidate.ticker),
-        name: candidate.name || candidate.ticker,
-        sleeveFit: candidate.suggestedRole,
-        sector: candidate.sector || "Unclassified",
-        price: candidate.price ?? 0,
-        signalScore: candidate.score,
-        upside: candidate.upside ?? 0,
-        revisionScore: 50,
-        momentumScore: candidate.momentumScore ?? 50,
-        qualityScore: candidate.qualityScore ?? 50,
-        dispersion: 0,
-        buyZoneLow: candidate.buyZoneLow ?? 0,
-        buyZoneHigh: candidate.buyZoneHigh ?? 0,
-        buyAnchor: candidate.buyZoneLow && candidate.buyZoneHigh ? (candidate.buyZoneLow + candidate.buyZoneHigh) / 2 : 0,
-        stopLevel: 0,
-        trimLow: candidate.trimLow ?? 0,
-        trimHigh: candidate.trimHigh ?? 0,
-        taConfidence: candidate.dataQuality === "Full Data" ? "High" : candidate.dataQuality === "Partial Data" ? "Medium" : "Low",
-        taNotes: candidate.sourceStatus,
-        notes: `Promoted from S&P 500 Screener. Data quality: ${candidate.dataQuality}.`,
-      };
-      addCandidateToHoldings(benchCandidate);
-    }, 0);
-  }
-
   function addBenchCandidate() {
     const nextRank =
       benchCandidates.reduce(
@@ -1828,6 +2407,18 @@ export default function ForgeDashboard() {
         0,
       ) + 1;
     setBenchCandidates((prev) => [...prev, blankBenchCandidate(nextRank)]);
+  }
+
+  function updateBenchCandidate<K extends keyof BenchCandidate>(
+    index: number,
+    field: K,
+    value: BenchCandidate[K],
+  ) {
+    setBenchCandidates((prev) =>
+      prev.map((candidate, i) =>
+        i === index ? { ...candidate, [field]: value } : candidate,
+      ),
+    );
   }
 
   function resetBenchToDefault() {
@@ -1838,6 +2429,18 @@ export default function ForgeDashboard() {
     ) {
       setBenchCandidates(DEFAULT_BENCH);
     }
+  }
+
+  function updateCall<K extends keyof CoveredCall>(
+    id: string,
+    field: K,
+    value: CoveredCall[K],
+  ) {
+    setOpenCalls((prev) =>
+      prev.map((call) =>
+        call.id === id ? { ...call, [field]: value } : call,
+      ),
+    );
   }
 
   function addOptionCandidateToCalls(candidate: OptionCandidate) {
@@ -1865,55 +2468,7 @@ export default function ForgeDashboard() {
         notes: `Finnhub candidate ${candidate.expiration}; verify bid/ask in brokerage before trade.`,
       },
     ]);
-    setActiveTab("coveredCalls");
-  }
-
-  function addCandidateToHoldings(candidate: BenchCandidate) {
-    const alreadyOwned = holdings.some(
-      (h) => h.ticker.toUpperCase() === candidate.ticker.toUpperCase(),
-    );
-    if (alreadyOwned) return;
-    setHoldings((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        ticker: candidate.ticker,
-        name: candidate.name,
-        sleeve: candidate.sleeveFit,
-        sector: candidate.sector,
-        shares: 0,
-        cost: candidate.price,
-        price: candidate.price,
-        forgeRank: candidate.rank,
-        signalScore: candidate.signalScore,
-        upside: candidate.upside,
-        revisionScore: candidate.revisionScore,
-        momentumScore: candidate.momentumScore,
-        qualityScore: candidate.qualityScore,
-        dispersion: candidate.dispersion,
-        daysHeld: 0,
-        purchaseDate: todayIsoDate(),
-        above200dma: true,
-        earningsBeforeExpiry: false,
-        technicalExtension: 0,
-        buyZoneLow: candidate.buyZoneLow ?? 0,
-        buyZoneHigh: candidate.buyZoneHigh ?? 0,
-        buyAnchor: candidate.buyAnchor ?? 0,
-        stopLevel: candidate.stopLevel ?? 0,
-        trimLow: candidate.trimLow ?? 0,
-        trimHigh: candidate.trimHigh ?? 0,
-        taConfidence: candidate.taConfidence ?? "Manual",
-        taNotes: candidate.taNotes ?? "",
-        notes: candidate.notes,
-      },
-    ]);
-    setActiveTab("holdings");
-  }
-
-  function clearHoldings() {
-    if (window.confirm("Clear all FORGE holdings from this browser?")) {
-      setHoldings([]);
-    }
+    setActiveTab("actionItems");
   }
 
   const ownedTickers = new Set(holdings.map((h) => h.ticker.toUpperCase()));
@@ -2224,7 +2779,7 @@ export default function ForgeDashboard() {
           </div>
 
           <div className="mt-7 flex flex-wrap gap-2">
-            {(Object.keys(TAB_LABELS) as Tab[]).map((tab) => (
+            {(Object.keys(TAB_LABELS) as Tab[]).filter((tab) => tab !== "coveredCalls").map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -2289,10 +2844,7 @@ export default function ForgeDashboard() {
                 </p>
                 {holdings.length === 0 ? (
                   <div className="mt-4 border border-[#E5D8A8] bg-[#F0EBD8] p-4 text-sm leading-6 text-[#344054]">
-                    The FORGE book has not been started. Use the{" "}
-                    <strong>Bench</strong> tab to promote candidates into the
-                    Holdings ledger, then edit shares, basis, current price,
-                    rank, signal score, and tax-lot age.
+                    The FORGE book has not been started. Use the <strong>Bench</strong> and <strong>S&amp;P 500 Screener</strong> tabs to identify candidates, then enter <strong>Buy</strong> trades in the <strong>Trade Log</strong> to create holdings.
                   </div>
                 ) : null}
                 <div className="mt-5 grid grid-cols-2 gap-3">
@@ -2375,6 +2927,199 @@ export default function ForgeDashboard() {
             </section>
           )}
 
+          {activeTab === "tradeLog" && (
+            <section>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-black">Trade Log</h3>
+                  <p className="mt-2 text-sm text-[#344054]">
+                    Execution ledger for FORGE stock trades, option overlays, deposits, withdrawals, dividends, interest, and fees. Still-open stock and option exposure flows into Holdings; this log is the audit trail for what was actually traded.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearTrades}
+                  className="border border-[#E5D8A8] px-4 py-2 text-sm font-black text-[#0D1B2A]"
+                >
+                  Clear Log
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-5">
+                {metricCard("Logged Trades", String(trades.length), `${tradeStats.stockTradeCount} stock / ${tradeStats.optionTradeCount} option`)}
+                {metricCard("Cash Impact", formatSignedCurrency(tradeStats.cashImpact), "from logged trades", tradeStats.cashImpact >= 0 ? "text-[#067647]" : "text-[#B42318]")}
+                {metricCard("Deposits", formatCurrency(tradeStats.deposits), "external cash in")}
+                {metricCard("Withdrawals", formatCurrency(tradeStats.withdrawals), "external cash out")}
+                {metricCard("Option Realized", formatSignedCurrency(tradeStats.realizedOptionPnl), "closed option P&L", tradeStats.realizedOptionPnl >= 0 ? "text-[#067647]" : "text-[#B42318]")}
+              </div>
+
+              <div className="mt-5 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                <div className="border border-[#E5D8A8] p-4">
+                  <h4 className="font-black text-[#0D1B2A]">Enter Trade</h4>
+                  <form className="mt-4 space-y-4" onSubmit={submitTrade}>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="block">
+                        <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Trade Date</span>
+                        <input
+                          className="mt-2 w-full border border-[#E5D8A8] p-3"
+                          name="date"
+                          type="date"
+                          value={tradeForm.date}
+                          onChange={updateTradeForm}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Trade Type</span>
+                        <select
+                          className="mt-2 w-full border border-[#E5D8A8] bg-white p-3"
+                          name="type"
+                          value={tradeForm.type}
+                          onChange={updateTradeForm}
+                        >
+                          <option value="deposit">Deposit</option>
+                          <option value="withdrawal">Withdrawal</option>
+                        <option value="dividend">Dividend Received</option>
+                        <option value="interest_expense">Interest Expense</option>
+                        <option value="fee">Fee / Expense</option>
+                          <option value="buy_stock">Buy Stock</option>
+                          <option value="sell_stock">Sell Stock</option>
+                          <option value="buy_to_open_call">Buy to Open Call</option>
+                          <option value="sell_to_close_call">Sell to Close Call</option>
+                          <option value="sell_to_open_call">Sell to Open Call</option>
+                          <option value="buy_to_close_call">Buy to Close Call</option>
+                          <option value="buy_to_open_put">Buy to Open Put</option>
+                          <option value="sell_to_close_put">Sell to Close Put</option>
+                          <option value="sell_to_open_put">Sell to Open Put</option>
+                          <option value="buy_to_close_put">Buy to Close Put</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    {renderTradeSpecificInputs()}
+
+                    <label className="block">
+                      <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Notes</span>
+                      <textarea
+                        className="mt-2 w-full border border-[#E5D8A8] p-3"
+                        name="notes"
+                        rows={3}
+                        value={tradeForm.notes}
+                        onChange={updateTradeForm}
+                        placeholder="Thesis, hedge reason, covered-call rationale, catalyst window, tax note..."
+                      />
+                    </label>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="submit"
+                        className="bg-[#C9A84C] px-4 py-2 text-sm font-black text-white"
+                      >
+                        Add Trade
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTradeForm(makeEmptyTradeForm());
+                          setTradeMessage("");
+                        }}
+                        className="border border-[#E5D8A8] px-4 py-2 text-sm font-black text-[#0D1B2A]"
+                      >
+                        Reset Form
+                      </button>
+                    </div>
+                    {tradeMessage ? (
+                      <div className="text-sm font-bold text-[#344054]">{tradeMessage}</div>
+                    ) : null}
+                  </form>
+                </div>
+
+                <div className="border border-[#E5D8A8] p-4">
+                  <h4 className="font-black text-[#0D1B2A]">Open Option Exposure From Log</h4>
+                  <p className="mt-2 text-sm text-[#344054]">
+                    Uses average premium from logged opens/closes. For live marks, verify in E*TRADE; this is an execution ledger, not a broker statement.
+                  </p>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full min-w-[760px] border-collapse text-sm">
+                      <thead className="bg-[#0D1B2A] text-white">
+                        <tr>
+                          {["Ticker", "Side", "Direction", "Expiry", "Strike", "Contracts", "Avg Premium", "Book Value"].map((h) => (
+                            <th key={h} className="p-3 text-left text-xs uppercase tracking-wide">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tradeStats.openOptions.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-4 text-sm text-[#344054]">No open option exposure logged.</td>
+                          </tr>
+                        ) : (
+                          tradeStats.openOptions.map((position) => (
+                            <tr key={position.key} className="border-b border-[#E5D8A8]">
+                              <td className="p-3 font-black">{position.ticker}</td>
+                              <td className="p-3">{position.side}</td>
+                              <td className={position.direction === "LONG" ? "p-3 font-bold text-[#067647]" : "p-3 font-bold text-[#B42318]"}>{position.direction}</td>
+                              <td className="p-3">{position.expiry}</td>
+                              <td className="p-3">{formatCurrencyTable(position.strike)}</td>
+                              <td className="p-3">{position.contracts}</td>
+                              <td className="p-3">{formatCurrencyTable(position.avgPremium)}</td>
+                              <td className={position.marketValue >= 0 ? "p-3 font-bold text-[#067647]" : "p-3 font-bold text-[#B42318]"}>{formatSignedCurrency(position.marketValue)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 border border-[#E5D8A8] p-4">
+                <h4 className="font-black text-[#0D1B2A]">Trade History</h4>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[980px] border-collapse text-sm">
+                    <thead className="bg-[#0D1B2A] text-white">
+                      <tr>
+                        {["Date", "Type", "Description", "Cash Impact", "Notes", ""].map((h) => (
+                          <th key={h} className="p-3 text-left text-xs uppercase tracking-wide">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trades.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-4 text-sm text-[#344054]">No trades recorded yet.</td>
+                        </tr>
+                      ) : (
+                        [...trades]
+                          .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+                          .map((trade) => {
+                            const impact = tradeCashImpact(trade);
+                            return (
+                              <tr key={trade.id} className="border-b border-[#E5D8A8] align-top">
+                                <td className="p-3">{trade.date}</td>
+                                <td className="p-3 font-bold">{tradeTypeLabel(trade.type)}</td>
+                                <td className="p-3 font-black text-[#0D1B2A]">{describeTrade(trade)}</td>
+                                <td className={impact >= 0 ? "p-3 font-bold text-[#067647]" : "p-3 font-bold text-[#B42318]"}>{formatSignedCurrency(impact)}</td>
+                                <td className="p-3 text-[#344054]">{trade.notes || "—"}</td>
+                                <td className="p-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteTrade(trade.id)}
+                                    className="text-xs font-black text-[#B42318]"
+                                  >
+                                    Delete
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          )}
+
           {activeTab === "holdings" && (
             <section>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2383,33 +3128,22 @@ export default function ForgeDashboard() {
                     Holdings Ledger
                   </h3>
                   <p className="mt-2 text-sm text-[#344054]">
-                    Streamlined decision view. Editable inputs remain on the left; calculated outputs are locked: live price, buy zone, call zone, combined 0–100 score, and action state.
+                    Holdings are generated only from the Trade Log. Use backdated or new stock and option trades to create or change FORGE exposure. Sleeve, sector, shares, cost, and purchase date are derived from logged trades and candidate metadata.
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      setHoldings((prev) => [...prev, blankHolding()])
-                    }
+                    onClick={() => rebuildHoldingsFromTradeLog(trades)}
                     className="bg-[#C9A84C] px-4 py-2 text-sm font-black text-white"
                   >
-                    Add Holding
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearHoldings}
-                    className="border border-[#E5D8A8] px-4 py-2 text-sm font-black text-[#0D1B2A]"
-                  >
-                    Clear
+                    Rebuild From Trade Log
                   </button>
                 </div>
               </div>
               {holdings.length === 0 ? (
                 <div className="mt-4 border border-[#E5D8A8] bg-[#F0EBD8] p-4 text-sm text-[#344054]">
-                  No holdings entered yet. Go to the <strong>Bench</strong> tab
-                  and click <strong>Promote</strong> next to a candidate, or use{" "}
-                  <strong>Add Holding</strong> above.
+                  No holdings generated yet. Go to the <strong>Trade Log</strong> tab and enter stock or option trades. You can backdate existing FORGE positions; Holdings will rebuild from still-open exposure.
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto">
@@ -2421,12 +3155,12 @@ export default function ForgeDashboard() {
                           "Name",
                           "Sleeve",
                           "Sector",
-                          "Shares",
-                          "Cost",
+                          "Qty",
+                          "Avg Cost / Premium",
                           "Purchase Date",
                           "Price",
                           "Buy Zone",
-                          "Call Zone",
+                          "Hedge / Call Zone",
                           "Score",
                           "Weight",
                           "P&L",
@@ -2448,8 +3182,13 @@ export default function ForgeDashboard() {
                         const live = liveQuotes[ticker];
                         const ta = technicalData[ticker];
                         const meta = metadataForTicker(ticker);
-                        const displaySleeve = meta?.sleeve ?? h.sleeve;
-                        const displaySector = meta?.sector || h.sector || "Unclassified";
+                        const isOptionHolding = h.instrumentType === "Option";
+                        const optionSuffix = h.optionSide === "CALL" ? "C" : "P";
+                        const optionLabel = isOptionHolding
+                          ? `${h.optionDirection ?? "LONG"} ${h.optionExpiry ?? ""} $${h.optionStrike ?? 0}${optionSuffix}`
+                          : "";
+                        const displaySleeve = isOptionHolding ? h.optionDirection ?? "Option" : meta?.sleeve ?? h.sleeve;
+                        const displaySector = isOptionHolding ? "Option Overlay" : meta?.sector || h.sector || "Unclassified";
                         const displayTa = displayTaFields(h, ta);
                         const inBuyZone =
                           displayTa.price > 0 &&
@@ -2461,41 +3200,32 @@ export default function ForgeDashboard() {
                           displayTa.price > 0 &&
                           displayTa.trimLow > 0 &&
                           displayTa.price >= displayTa.trimLow;
-                        const combinedScore = calculateForgeSignalScore({
-                          ...h,
-                          price: displayTa.price,
-                          buyZoneLow: displayTa.buyZoneLow,
-                          buyZoneHigh: displayTa.buyZoneHigh,
-                          stopLevel: displayTa.stopLevel,
-                          trimLow: displayTa.trimLow,
-                          trimHigh: displayTa.trimHigh,
-                          taConfidence: displayTa.confidence,
-                          above200dma: ta?.above200dma ?? h.above200dma,
-                          technicalExtension: ta?.technicalExtension ?? h.technicalExtension,
-                        });
+                        const combinedScore = isOptionHolding
+                          ? 0
+                          : calculateForgeSignalScore({
+                              ...h,
+                              price: displayTa.price,
+                              buyZoneLow: displayTa.buyZoneLow,
+                              buyZoneHigh: displayTa.buyZoneHigh,
+                              stopLevel: displayTa.stopLevel,
+                              trimLow: displayTa.trimLow,
+                              trimHigh: displayTa.trimHigh,
+                              taConfidence: displayTa.confidence,
+                              above200dma: ta?.above200dma ?? h.above200dma,
+                              technicalExtension: ta?.technicalExtension ?? h.technicalExtension,
+                            });
                         return (
                           <tr key={h.id} className="border-b border-[#E5D8A8] align-top">
                             <td className="p-2">
-                              <input
-                                className="w-20 border border-[#E5D8A8] p-2 font-black"
-                                value={h.ticker}
-                                onChange={(e) =>
-                                  updateHolding(
-                                    h.id,
-                                    "ticker",
-                                    e.target.value.toUpperCase(),
-                                  )
-                                }
-                              />
+                              <div className="readonly-cell w-24">
+                                <div>{h.ticker}</div>
+                                {isOptionHolding ? (
+                                  <div className="text-[10px] font-black text-[#C9A84C]">{optionLabel}</div>
+                                ) : null}
+                              </div>
                             </td>
                             <td className="p-2">
-                              <input
-                                className="w-40 border border-[#E5D8A8] p-2"
-                                value={h.name}
-                                onChange={(e) =>
-                                  updateHolding(h.id, "name", e.target.value)
-                                }
-                              />
+                              <div className="readonly-cell w-40">{h.name || metadataForTicker(ticker)?.name || "—"}</div>
                             </td>
                             <td className="p-2">
                               <div className="readonly-cell">{displaySleeve}</div>
@@ -2504,42 +3234,13 @@ export default function ForgeDashboard() {
                               <div className="readonly-cell">{displaySector}</div>
                             </td>
                             <td className="p-2">
-                              <input
-                                className="w-20 border border-[#E5D8A8] p-2"
-                                type="number"
-                                value={h.shares}
-                                onChange={(e) =>
-                                  updateHolding(
-                                    h.id,
-                                    "shares",
-                                    parseNumber(e.target.value),
-                                  )
-                                }
-                              />
+                              <div className="readonly-cell w-20">{isOptionHolding ? `${formatMetric(h.shares / 100, 0)} ctr` : formatMetric(h.shares, 0)}</div>
                             </td>
                             <td className="p-2">
-                              <input
-                                className="w-20 border border-[#E5D8A8] p-2"
-                                type="number"
-                                value={h.cost}
-                                onChange={(e) =>
-                                  updateHolding(
-                                    h.id,
-                                    "cost",
-                                    parseNumber(e.target.value),
-                                  )
-                                }
-                              />
+                              <div className="readonly-cell w-24">{formatCurrencyTable(h.cost)}</div>
                             </td>
                             <td className="p-2">
-                              <input
-                                className="w-28 border border-[#E5D8A8] p-2"
-                                type="date"
-                                value={h.purchaseDate || isoDateFromDaysHeld(h.daysHeld)}
-                                onChange={(e) =>
-                                  updateHolding(h.id, "purchaseDate", e.target.value)
-                                }
-                              />
+                              <div className="readonly-box w-28">{h.purchaseDate || isoDateFromDaysHeld(h.daysHeld) || "—"}</div>
                               {h.ltcg ? (
                                 <div className="text-xs font-bold text-[#067647]">LTCG</div>
                               ) : (
@@ -2548,35 +3249,43 @@ export default function ForgeDashboard() {
                             </td>
                             <td className="p-2">
                               {valueBox(
-                                formatCurrencyTable(displayTa.price || h.price),
-                                live
-                                  ? `LIVE ${formatSignedPercentPoints(live.changePercent)}`
-                                  : "STORED",
-                                live ? "positive" : "neutral",
+                                isOptionHolding ? formatCurrencyTable(h.price) : formatCurrencyTable(displayTa.price || h.price),
+                                isOptionHolding
+                                  ? "TRADE LOG"
+                                  : live
+                                    ? `LIVE ${formatSignedPercentPoints(live.changePercent)}`
+                                    : "STORED",
+                                live && !isOptionHolding ? "positive" : "neutral",
                               )}
                             </td>
                             <td className="p-2">
-                              {zoneBox(
-                                displayTa.buyZoneLow,
-                                displayTa.buyZoneHigh,
-                                inBuyZone ? "IN ZONE" : undefined,
-                                inBuyZone ? "positive" : "neutral",
-                              )}
+                              {isOptionHolding
+                                ? <div className="readonly-cell w-24">—</div>
+                                : zoneBox(
+                                    displayTa.buyZoneLow,
+                                    displayTa.buyZoneHigh,
+                                    inBuyZone ? "IN ZONE" : undefined,
+                                    inBuyZone ? "positive" : "neutral",
+                                  )}
                             </td>
                             <td className="p-2">
-                              {zoneBox(
-                                displayTa.trimLow,
-                                displayTa.trimHigh,
-                                inTrimZone ? "COVER / TRIM" : undefined,
-                                inTrimZone ? "warning" : "neutral",
-                              )}
+                              {isOptionHolding
+                                ? <div className="readonly-cell w-24">—</div>
+                                : zoneBox(
+                                    displayTa.trimLow,
+                                    displayTa.trimHigh,
+                                    inTrimZone ? "COVER / TRIM" : undefined,
+                                    inTrimZone ? "warning" : "neutral",
+                                  )}
                             </td>
                             <td className="p-2">
-                              {valueBox(
-                                formatMetric(combinedScore),
-                                scoreLabel(combinedScore),
-                                scoreTone(combinedScore),
-                              )}
+                              {isOptionHolding
+                                ? valueBox("Option", h.optionDirection ?? "OPEN", "neutral")
+                                : valueBox(
+                                    formatMetric(combinedScore),
+                                    scoreLabel(combinedScore),
+                                    scoreTone(combinedScore),
+                                  )}
                             </td>
                             <td className="p-3 font-bold">
                               {formatPercent(h.weight)}
@@ -2593,18 +3302,8 @@ export default function ForgeDashboard() {
                                 {h.action}
                               </span>
                             </td>
-                            <td className="p-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setHoldings((prev) =>
-                                    prev.filter((x) => x.id !== h.id),
-                                  )
-                                }
-                                className="text-xs font-black text-[#B42318]"
-                              >
-                                Delete
-                              </button>
+                            <td className="p-2 text-xs font-bold text-[#667085]">
+                              Trade Log Source
                             </td>
                           </tr>
                         );
@@ -2624,7 +3323,7 @@ export default function ForgeDashboard() {
                     Bench / Top Candidate Pool
                   </h3>
                   <p className="mt-2 text-sm text-[#344054]">
-                    Clean candidate view. Add or edit potential positions, then use the locked outputs — live price, buy zone, call zone, and combined FORGE Score — to prioritize adds and promotions.
+                    Clean candidate view. Add or edit potential positions, then use the locked outputs — live price, buy zone, call zone, and combined FORGE Score — to decide what to buy through the Trade Log.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -2791,14 +3490,6 @@ export default function ForgeDashboard() {
                             <div className="flex flex-col gap-2">
                               <button
                                 type="button"
-                                disabled={owned || !s.ticker}
-                                onClick={() => addCandidateToHoldings(s)}
-                                className={`px-3 py-2 text-xs font-black ${owned || !s.ticker ? "bg-slate-100 text-slate-400" : "bg-[#C9A84C] text-white"}`}
-                              >
-                                {owned ? "Added" : "Promote"}
-                              </button>
-                              <button
-                                type="button"
                                 onClick={() =>
                                   setBenchCandidates((prev) =>
                                     prev.filter((_, i) => i !== index),
@@ -2933,14 +3624,6 @@ export default function ForgeDashboard() {
                                 className="bg-[#C9A84C] px-3 py-2 text-xs font-black text-white"
                               >
                                 Add Bench
-                              </button>
-                              <button
-                                type="button"
-                                disabled={owned}
-                                onClick={() => addScreenerToHoldings(s)}
-                                className={`px-3 py-2 text-xs font-black ${owned ? "bg-slate-100 text-slate-400" : "border border-[#E5D8A8] text-[#0D1B2A]"}`}
-                              >
-                                {owned ? "Owned" : "Promote"}
                               </button>
                             </div>
                           </td>
@@ -3462,22 +4145,63 @@ export default function ForgeDashboard() {
 
           {activeTab === "performance" && (
             <section>
-              <h3 className="text-xl font-black">Performance</h3>
+              <h3 className="text-xl font-black">Performance & Margin Allocation</h3>
               <p className="mt-2 text-sm text-[#344054]">
-                FORGE is theory-driven and rules-based, not a backtested
-                performance claim. This page should eventually compare FORGE
-                against SPY, equal-weight S&amp;P 500, TITAN, and
-                dividend-income proxies.
+                FORGE is tracked as a virtual sleeve inside one master E*TRADE account. Performance uses FORGE holdings, FORGE cash flows, and an assigned margin-interest allocation rather than the brokerage account total alone.
               </p>
               <div className="mt-5 grid gap-3 md:grid-cols-4">
-                {metricCard("Net Liq", formatCurrency(snapshot.netLiquidationValue), "cash + holdings - margin")}
-                {metricCard("Total P&L", formatCurrency(snapshot.totalPnl), "unrealized vs entered cost")}
+                {metricCard("Net Liq", formatCurrency(snapshot.netLiquidationValue), "holdings + cash - margin")}
+                {metricCard("Gross P&L", formatCurrency(snapshot.totalPnl), "before assigned financing")}
+                {metricCard("Assigned Financing", formatCurrency(snapshot.assignedAnnualFinancingCost), "annualized allocation")}
+                {metricCard("Net P&L", formatSignedCurrency(snapshot.netPnlAfterFinancing), "after financing allocation", snapshot.netPnlAfterFinancing >= 0 ? "text-[#067647]" : "text-[#B42318]")}
+                {metricCard("Internal Debit", formatCurrency(snapshot.forgeInternalDebit), "gross value - assigned capital")}
+                {metricCard("Net Contributions", formatSignedCurrency(snapshot.netContributions), "deposits - withdrawals")}
                 {metricCard("Weighted Score", formatMetric(snapshot.weightedForgeScore), "current holdings")}
                 {metricCard("Benchmark", "SPY", "FORGE primary yardstick")}
-                {metricCard("Target Return", "~15%", "pre-tax cycle target")}
-                {metricCard("Tax Goal", "LTCG", "366+ days preferred")}
-                {metricCard("Turnover", "Low/Mod", "Core biased to hold")}
-                {metricCard("Screener", screenerResults.length ? `${screenerResults.length} names` : "Not run", "S&P 500 candidate pool")}
+              </div>
+
+              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                <div className="border border-[#E5D8A8] p-5">
+                  <h4 className="font-black text-[#0D1B2A]">Performance Settings</h4>
+                  <p className="mt-2 text-sm leading-6 text-[#344054]">
+                    Use these fields to allocate master-account margin expense to FORGE when APEX, TITAN, FORGE, and Concentrated sit inside the same E*TRADE account.
+                  </p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Starting FORGE Capital</span>
+                      <input className="mt-2 w-full border border-[#E5D8A8] p-3" type="number" value={performanceSettings.startingForgeCapital} onChange={(e) => setPerformanceSettings((p) => ({ ...p, startingForgeCapital: Number(e.target.value) }))} />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">FORGE Assigned Equity Capital</span>
+                      <input className="mt-2 w-full border border-[#E5D8A8] p-3" type="number" value={performanceSettings.forgeAssignedEquityCapital} onChange={(e) => setPerformanceSettings((p) => ({ ...p, forgeAssignedEquityCapital: Number(e.target.value) }))} />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Master Monthly Margin Interest</span>
+                      <input className="mt-2 w-full border border-[#E5D8A8] p-3" type="number" value={performanceSettings.masterMonthlyMarginInterest} onChange={(e) => setPerformanceSettings((p) => ({ ...p, masterMonthlyMarginInterest: Number(e.target.value) }))} />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-black uppercase tracking-widest text-[#C9A84C]">Total Strategy Debits</span>
+                      <input className="mt-2 w-full border border-[#E5D8A8] p-3" type="number" value={performanceSettings.masterTotalStrategyDebits} onChange={(e) => setPerformanceSettings((p) => ({ ...p, masterTotalStrategyDebits: Number(e.target.value) }))} />
+                    </label>
+                  </div>
+                  <label className="mt-4 flex items-center gap-2 text-sm font-bold text-[#344054]">
+                    <input type="checkbox" checked={performanceSettings.allocateMarginByDebitShare} onChange={(e) => setPerformanceSettings((p) => ({ ...p, allocateMarginByDebitShare: e.target.checked }))} />
+                    Allocate margin by average debit share
+                  </label>
+                </div>
+
+                <div className="border border-[#E5D8A8] bg-[#F0EBD8] p-5">
+                  <h4 className="font-black text-[#0D1B2A]">Allocation Logic</h4>
+                  <div className="mt-4 space-y-3 text-sm text-[#344054]">
+                    <div className="flex justify-between border-b border-[#E5D8A8] pb-2"><span>FORGE internal debit</span><strong>{formatCurrency(snapshot.forgeInternalDebit)}</strong></div>
+                    <div className="flex justify-between border-b border-[#E5D8A8] pb-2"><span>Total strategy debits</span><strong>{formatCurrency(performanceSettings.masterTotalStrategyDebits)}</strong></div>
+                    <div className="flex justify-between border-b border-[#E5D8A8] pb-2"><span>Debit share</span><strong>{performanceSettings.masterTotalStrategyDebits > 0 ? formatPercent(snapshot.forgeInternalDebit / performanceSettings.masterTotalStrategyDebits) : "—"}</strong></div>
+                    <div className="flex justify-between border-b border-[#E5D8A8] pb-2"><span>Assigned annual margin cost</span><strong>{formatCurrency(snapshot.assignedAnnualFinancingCost)}</strong></div>
+                    <div className="text-xs leading-5">
+                      If the allocation fields are blank, the fallback remains the direct FORGE margin-debt estimate: internal margin debt × margin rate.
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
           )}
