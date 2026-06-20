@@ -46,6 +46,7 @@ type Holding = {
   qualityScore: number;
   dispersion: number;
   daysHeld: number;
+  purchaseDate?: string;
   above200dma: boolean;
   earningsBeforeExpiry: boolean;
   technicalExtension: number;
@@ -715,6 +716,7 @@ const blankHolding = (): Holding => ({
   qualityScore: 0,
   dispersion: 0,
   daysHeld: 0,
+  purchaseDate: "",
   above200dma: false,
   earningsBeforeExpiry: false,
   technicalExtension: 0,
@@ -777,6 +779,26 @@ function displayDateString(): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isoDateFromDaysHeld(daysHeld: number): string {
+  if (!Number.isFinite(daysHeld) || daysHeld <= 0) return "";
+  const date = new Date();
+  date.setDate(date.getDate() - Math.round(daysHeld));
+  return date.toISOString().slice(0, 10);
+}
+
+function daysHeldFromPurchaseDate(purchaseDate: string | undefined, fallbackDays = 0): number {
+  if (!purchaseDate) return Math.max(0, Math.round(fallbackDays || 0));
+  const purchase = new Date(`${purchaseDate}T00:00:00`);
+  if (Number.isNaN(purchase.getTime())) return Math.max(0, Math.round(fallbackDays || 0));
+  const now = new Date();
+  const diff = now.getTime() - purchase.getTime();
+  return Math.max(0, Math.floor(diff / (24 * 60 * 60 * 1000)));
 }
 
 function formatCurrency(value: number): string {
@@ -1451,7 +1473,8 @@ export default function ForgeDashboard() {
       const marketValue = h.shares * h.price;
       const weight = longMarketValue > 0 ? marketValue / longMarketValue : 0;
       const gain = h.cost > 0 ? h.price / h.cost - 1 : 0;
-      const ltcg = h.daysHeld >= 366;
+      const daysHeld = daysHeldFromPurchaseDate(h.purchaseDate, h.daysHeld);
+      const ltcg = daysHeld >= 366;
       const priceInBuyZone =
         h.buyZoneLow > 0 &&
         h.buyZoneHigh > 0 &&
@@ -1462,12 +1485,11 @@ export default function ForgeDashboard() {
       const coverEligible =
         weight > 0.06 &&
         h.above200dma &&
-        !h.earningsBeforeExpiry &&
         (h.technicalExtension >= 0.15 || atTrimZone);
       const trim = weight > 0.075 || (h.trimHigh > 0 && h.price >= h.trimHigh);
       const buy = priceInBuyZone && h.signalScore >= 65 && !invalidated;
-      const taxHarvest = gain < -0.08 && h.daysHeld < 366;
-      const sell = invalidated || (h.daysHeld >= 366 && h.forgeRank > 100);
+      const taxHarvest = gain < -0.08 && daysHeld < 366;
+      const sell = invalidated || (daysHeld >= 366 && h.forgeRank > 100);
       const action: ActionState = sell
         ? "SELL"
         : taxHarvest
@@ -1479,7 +1501,7 @@ export default function ForgeDashboard() {
               : buy
                 ? "BUY"
                 : "HOLD";
-      return { ...h, marketValue, weight, gain, ltcg, coverEligible, action };
+      return { ...h, daysHeld, marketValue, weight, gain, ltcg, coverEligible, action };
     });
 
     const sectorWeights = Object.entries(
@@ -1618,9 +1640,21 @@ export default function ForgeDashboard() {
     value: string | number | boolean,
   ) {
     setHoldings((prev) =>
-      prev.map((h) =>
-        h.id === id ? ({ ...h, [field]: value } as Holding) : h,
-      ),
+      prev.map((h) => {
+        if (h.id !== id) return h;
+        const next = { ...h, [field]: value } as Holding;
+        if (field === "ticker" && typeof value === "string") {
+          const meta = tickerMetadata.get(normalizeTicker(value));
+          if (meta) {
+            next.name = next.name || meta.name;
+            next.sleeve = meta.sleeve;
+            next.sector = meta.sector;
+            next.forgeRank = meta.rank ?? next.forgeRank;
+            next.signalScore = meta.score ?? next.signalScore;
+          }
+        }
+        return next;
+      }),
     );
   }
 
@@ -1642,9 +1676,20 @@ export default function ForgeDashboard() {
     value: string | number,
   ) {
     setBenchCandidates((prev) =>
-      prev.map((b, i) =>
-        i === index ? ({ ...b, [field]: value } as BenchCandidate) : b,
-      ),
+      prev.map((b, i) => {
+        if (i !== index) return b;
+        const next = { ...b, [field]: value } as BenchCandidate;
+        if (field === "ticker" && typeof value === "string") {
+          const meta = tickerMetadata.get(normalizeTicker(value));
+          if (meta) {
+            next.name = next.name || meta.name;
+            next.sleeveFit = meta.sleeve;
+            next.sector = meta.sector;
+            next.signalScore = meta.score ?? next.signalScore;
+          }
+        }
+        return next;
+      }),
     );
   }
 
@@ -1847,6 +1892,7 @@ export default function ForgeDashboard() {
         qualityScore: candidate.qualityScore,
         dispersion: candidate.dispersion,
         daysHeld: 0,
+        purchaseDate: todayIsoDate(),
         above200dma: true,
         earningsBeforeExpiry: false,
         technicalExtension: 0,
@@ -1871,6 +1917,51 @@ export default function ForgeDashboard() {
   }
 
   const ownedTickers = new Set(holdings.map((h) => h.ticker.toUpperCase()));
+
+  const tickerMetadata = useMemo(() => {
+    const map = new Map<string, { name: string; sleeve: Sleeve; sector: string; rank?: number; score?: number }>();
+    for (const candidate of DEFAULT_BENCH) {
+      const ticker = normalizeTicker(candidate.ticker);
+      if (ticker) {
+        map.set(ticker, {
+          name: candidate.name,
+          sleeve: candidate.sleeveFit,
+          sector: candidate.sector || "Unclassified",
+          rank: candidate.rank,
+          score: candidate.signalScore,
+        });
+      }
+    }
+    for (const candidate of benchCandidates) {
+      const ticker = normalizeTicker(candidate.ticker);
+      if (ticker) {
+        map.set(ticker, {
+          name: candidate.name || map.get(ticker)?.name || ticker,
+          sleeve: candidate.sleeveFit,
+          sector: candidate.sector || map.get(ticker)?.sector || "Unclassified",
+          rank: candidate.rank,
+          score: candidate.signalScore,
+        });
+      }
+    }
+    for (const candidate of screenerResults) {
+      const ticker = normalizeTicker(candidate.ticker);
+      if (ticker && !map.has(ticker)) {
+        map.set(ticker, {
+          name: candidate.name || ticker,
+          sleeve: candidate.suggestedRole,
+          sector: candidate.sector || "Unclassified",
+          rank: candidate.rank,
+          score: candidate.score,
+        });
+      }
+    }
+    return map;
+  }, [benchCandidates, screenerResults]);
+
+  function metadataForTicker(ticker: string) {
+    return tickerMetadata.get(normalizeTicker(ticker));
+  }
 
   return (
     <main className="min-h-screen bg-[#EEF1F6] text-[#0D1B2A]">
@@ -1903,10 +1994,18 @@ export default function ForgeDashboard() {
           line-height: 1.05 !important;
         }
         .holdings-table {
-          min-width: 1040px !important;
+          min-width: 980px !important;
         }
         .bench-table {
-          min-width: 900px !important;
+          min-width: 820px !important;
+        }
+        .readonly-cell {
+          min-height: 26px;
+          border: 1px solid #E5D8A8;
+          background: #F8FAFC;
+          padding: 5px 6px;
+          font-weight: 900;
+          white-space: nowrap;
         }
         .readonly-box {
           min-height: 26px;
@@ -2324,8 +2423,7 @@ export default function ForgeDashboard() {
                           "Sector",
                           "Shares",
                           "Cost",
-                          "Days",
-                          "Earnings",
+                          "Purchase Date",
                           "Price",
                           "Buy Zone",
                           "Call Zone",
@@ -2349,6 +2447,9 @@ export default function ForgeDashboard() {
                         const ticker = normalizeTicker(h.ticker);
                         const live = liveQuotes[ticker];
                         const ta = technicalData[ticker];
+                        const meta = metadataForTicker(ticker);
+                        const displaySleeve = meta?.sleeve ?? h.sleeve;
+                        const displaySector = meta?.sector || h.sector || "Unclassified";
                         const displayTa = displayTaFields(h, ta);
                         const inBuyZone =
                           displayTa.price > 0 &&
@@ -2397,29 +2498,10 @@ export default function ForgeDashboard() {
                               />
                             </td>
                             <td className="p-2">
-                              <select
-                                className="w-28 border border-[#E5D8A8] p-2"
-                                value={h.sleeve}
-                                onChange={(e) =>
-                                  updateHolding(
-                                    h.id,
-                                    "sleeve",
-                                    e.target.value as Sleeve,
-                                  )
-                                }
-                              >
-                                <option>Core</option>
-                                <option>Opportunistic</option>
-                              </select>
+                              <div className="readonly-cell">{displaySleeve}</div>
                             </td>
                             <td className="p-2">
-                              <input
-                                className="w-32 border border-[#E5D8A8] p-2"
-                                value={h.sector}
-                                onChange={(e) =>
-                                  updateHolding(h.id, "sector", e.target.value)
-                                }
-                              />
+                              <div className="readonly-cell">{displaySector}</div>
                             </td>
                             <td className="p-2">
                               <input
@@ -2451,35 +2533,18 @@ export default function ForgeDashboard() {
                             </td>
                             <td className="p-2">
                               <input
-                                className="w-16 border border-[#E5D8A8] p-2"
-                                type="number"
-                                value={h.daysHeld}
+                                className="w-28 border border-[#E5D8A8] p-2"
+                                type="date"
+                                value={h.purchaseDate || isoDateFromDaysHeld(h.daysHeld)}
                                 onChange={(e) =>
-                                  updateHolding(
-                                    h.id,
-                                    "daysHeld",
-                                    parseNumber(e.target.value),
-                                  )
+                                  updateHolding(h.id, "purchaseDate", e.target.value)
                                 }
                               />
                               {h.ltcg ? (
                                 <div className="text-xs font-bold text-[#067647]">LTCG</div>
                               ) : (
-                                <div className="text-xs font-bold text-[#B42318]">ST</div>
+                                <div className="text-xs font-bold text-[#B42318]">ST · {Math.max(0, 366 - h.daysHeld)}d</div>
                               )}
-                            </td>
-                            <td className="p-3 text-center">
-                              <input
-                                type="checkbox"
-                                checked={h.earningsBeforeExpiry}
-                                onChange={(e) =>
-                                  updateHolding(
-                                    h.id,
-                                    "earningsBeforeExpiry",
-                                    e.target.checked,
-                                  )
-                                }
-                              />
                             </td>
                             <td className="p-2">
                               {valueBox(
@@ -2494,7 +2559,7 @@ export default function ForgeDashboard() {
                               {zoneBox(
                                 displayTa.buyZoneLow,
                                 displayTa.buyZoneHigh,
-                                inBuyZone ? "IN ZONE" : "AUTO",
+                                inBuyZone ? "IN ZONE" : undefined,
                                 inBuyZone ? "positive" : "neutral",
                               )}
                             </td>
@@ -2502,7 +2567,7 @@ export default function ForgeDashboard() {
                               {zoneBox(
                                 displayTa.trimLow,
                                 displayTa.trimHigh,
-                                inTrimZone ? "COVER / TRIM" : "AUTO",
+                                inTrimZone ? "COVER / TRIM" : undefined,
                                 inTrimZone ? "warning" : "neutral",
                               )}
                             </td>
@@ -2611,6 +2676,9 @@ export default function ForgeDashboard() {
                       const owned = ownedTickers.has(s.ticker.toUpperCase());
                       const live = liveQuotes[ticker];
                       const ta = technicalData[ticker];
+                      const meta = metadataForTicker(ticker);
+                      const displaySleeve = meta?.sleeve ?? s.sleeveFit;
+                      const displaySector = meta?.sector || s.sector || "Unclassified";
                       const displayTa = displayTaFields(s, ta);
                       const inBuyZone =
                         displayTa.price > 0 &&
@@ -2636,7 +2704,7 @@ export default function ForgeDashboard() {
                         <tr key={`${s.ticker || "bench"}-${index}`} className="border-b border-[#E5D8A8] align-top">
                           <td className="p-2">
                             <input
-                              className="w-14 border border-[#E5D8A8] p-2 font-black"
+                              className="w-10 border border-[#E5D8A8] p-1 text-center font-black"
                               type="number"
                               value={s.rank}
                               onChange={(e) =>
@@ -2675,33 +2743,10 @@ export default function ForgeDashboard() {
                             />
                           </td>
                           <td className="p-2">
-                            <select
-                              className="w-28 border border-[#E5D8A8] p-2"
-                              value={s.sleeveFit}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "sleeveFit",
-                                  e.target.value as Sleeve,
-                                )
-                              }
-                            >
-                              <option>Core</option>
-                              <option>Opportunistic</option>
-                            </select>
+                            <div className="readonly-cell">{displaySleeve}</div>
                           </td>
                           <td className="p-2">
-                            <input
-                              className="w-36 border border-[#E5D8A8] p-2"
-                              value={s.sector}
-                              onChange={(e) =>
-                                updateBenchCandidate(
-                                  index,
-                                  "sector",
-                                  e.target.value,
-                                )
-                              }
-                            />
+                            <div className="readonly-cell">{displaySector}</div>
                           </td>
                           <td className="p-2">
                             {valueBox(
@@ -2716,7 +2761,7 @@ export default function ForgeDashboard() {
                             {zoneBox(
                               displayTa.buyZoneLow,
                               displayTa.buyZoneHigh,
-                              inBuyZone ? "IN ZONE" : "AUTO",
+                              inBuyZone ? "IN ZONE" : undefined,
                               inBuyZone ? "positive" : "neutral",
                             )}
                           </td>
@@ -2724,7 +2769,7 @@ export default function ForgeDashboard() {
                             {zoneBox(
                               displayTa.trimLow,
                               displayTa.trimHigh,
-                              inTrimZone ? "COVER / TRIM" : "AUTO",
+                              inTrimZone ? "COVER / TRIM" : undefined,
                               inTrimZone ? "warning" : "neutral",
                             )}
                           </td>
@@ -2850,7 +2895,7 @@ export default function ForgeDashboard() {
                 <table className="compact-data-table bench-table w-full border-collapse">
                   <thead className="bg-[#0D1B2A] text-white">
                     <tr>
-                      {["Rank", "Ticker", "Name", "Sector", "Role", "Price", "Buy Zone", "Call Zone", "Score", "Action", "Data", ""].map((h) => (
+                      {["Rank", "Ticker", "Name", "Sector", "Role", "Price", "Buy Zone", "Call Zone", "Score", "Action", "Data Level", ""].map((h) => (
                         <th key={h} className="p-3 text-left text-xs uppercase tracking-wide">
                           {h}
                         </th>
@@ -2867,9 +2912,9 @@ export default function ForgeDashboard() {
                           <td className="p-2">{s.name}</td>
                           <td className="p-2">{s.sector || "—"}</td>
                           <td className="p-2">{s.suggestedRole}</td>
-                          <td className="p-2">{valueBox(formatCurrencyTable(s.price), "LIVE", "neutral")}</td>
-                          <td className="p-2">{zoneBox(s.buyZoneLow, s.buyZoneHigh, "AUTO", "neutral")}</td>
-                          <td className="p-2">{zoneBox(s.trimLow, s.trimHigh, "AUTO", "neutral")}</td>
+                          <td className="p-2">{valueBox(formatCurrencyTable(s.price), undefined, "neutral")}</td>
+                          <td className="p-2">{zoneBox(s.buyZoneLow, s.buyZoneHigh, undefined, "neutral")}</td>
+                          <td className="p-2">{zoneBox(s.trimLow, s.trimHigh, undefined, "neutral")}</td>
                           <td className="p-2">{valueBox(formatMetric(s.score), scoreLabel(s.score), scoreTone(s.score))}</td>
                           <td className="p-2">
                             <span className={`border px-2 py-1 text-xs font-black ${statusPill(s.action === "AVOID" ? "SELL" : s.action === "CALL / TRIM" ? "COVER" : s.action === "BUY ZONE" ? "BUY" : "HOLD")}`}>
@@ -2878,7 +2923,7 @@ export default function ForgeDashboard() {
                           </td>
                           <td className="p-2 text-[10px] leading-4 text-[#344054]">
                             <div className="font-black text-[#0D1B2A]">{s.dataQuality}</div>
-                            <div>{s.sourceStatus}</div>
+                            {s.sourceStatus ? <div>{s.sourceStatus}</div> : null}
                           </td>
                           <td className="p-2">
                             <div className="flex flex-col gap-2">

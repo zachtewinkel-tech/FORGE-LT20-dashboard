@@ -1140,12 +1140,33 @@ function dataQuality(signal: SignalAutoData | null, ta: TechnicalAutoData | null
   return "Fallback";
 }
 
+
+async function mapWithConcurrency<T, U>(
+  items: T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<U>,
+): Promise<U[]> {
+  const results: U[] = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index]!, index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 async function screenSp500Batch(
   members: Sp500Member[],
   token: string,
 ): Promise<ScreenerCandidate[]> {
-  const candidates = await Promise.all(
-    members.map(async (member) => {
+  const candidates = await mapWithConcurrency(
+    members,
+    6,
+    async (member) => {
       const apiTicker = marketDataTicker(member.ticker);
       let quote: LiveQuote = {
         ticker: member.ticker,
@@ -1180,13 +1201,48 @@ async function screenSp500Batch(
         );
       }
 
-      const score = combinedServerScore(signal, ta, quote.price);
-      const quality = dataQuality(signal, ta);
+      const technicalScore = serverTechnicalScore(ta, quote.price);
+      const momentumProxy =
+        signal?.momentumScore ??
+        (quote.changePercent !== null && Number.isFinite(quote.changePercent)
+          ? Math.round(clamp(50 + quote.changePercent * 2.5, 0, 100))
+          : ta?.confidence === "High"
+            ? 72
+            : ta?.confidence === "Medium"
+              ? 62
+              : null);
+      const upsideComponent = scoreUpside(signal?.upside ?? null);
+      const momentumComponent = momentumProxy ?? 50;
+      const revisionComponent = signal?.recommendationScore ?? 50;
+      const momentumComposite = clamp(momentumComponent * 0.7 + revisionComponent * 0.3, 0, 100);
+      const qualityComponent = signal?.qualityScore ?? (ta?.confidence === "High" ? 70 : ta?.confidence === "Medium" ? 60 : 55);
+      const score = Math.round(
+        clamp(
+          upsideComponent * 0.3 +
+            momentumComposite * 0.25 +
+            qualityComponent * 0.2 +
+            technicalScore * 0.25,
+          0,
+          100,
+        ),
+      );
+      const hasTarget = signal?.upside !== null && signal?.upside !== undefined;
+      const hasQuality = signal?.qualityScore !== null && signal?.qualityScore !== undefined;
+      const hasMomentum = momentumProxy !== null && momentumProxy !== undefined;
+      const hasTa = Boolean(ta?.buyZoneLow && ta?.buyZoneHigh);
+      const quality: ScreenerCandidate["dataQuality"] = hasTa
+        ? hasTarget && hasQuality && ta?.confidence !== "Low"
+          ? "Full Data"
+          : hasMomentum || hasQuality || hasTarget
+            ? "Partial Data"
+            : "Price/TA Only"
+        : "Fallback";
       const sourceParts = [
-        signal?.upside !== null && signal?.upside !== undefined ? "target" : "no target",
-        signal?.momentumScore !== null && signal?.momentumScore !== undefined ? "momentum" : "no momentum",
-        signal?.qualityScore !== null && signal?.qualityScore !== undefined ? "quality" : "no quality",
-        ta?.buyZoneLow ? "TA" : "no TA",
+        quote.price ? "price" : "no price",
+        hasTarget ? "target" : "target unavailable",
+        hasMomentum ? "momentum proxy" : "momentum unavailable",
+        hasQuality ? "quality" : "quality proxy",
+        hasTa ? (ta?.confidence === "Low" ? "TA fallback" : "TA") : "TA unavailable",
       ];
 
       return {
@@ -1204,12 +1260,12 @@ async function screenSp500Batch(
         action: candidateAction(score, ta, quote.price),
         dataQuality: quality,
         upside: signal?.upside ?? null,
-        momentumScore: signal?.momentumScore ?? null,
-        qualityScore: signal?.qualityScore ?? null,
-        technicalScore: serverTechnicalScore(ta, quote.price),
-        sourceStatus: sourceParts.join(" / "),
+        momentumScore: momentumProxy,
+        qualityScore: signal?.qualityScore ?? qualityComponent,
+        technicalScore,
+        sourceStatus: sourceParts.join(" + "),
       } satisfies ScreenerCandidate;
-    }),
+    },
   );
 
   return candidates
