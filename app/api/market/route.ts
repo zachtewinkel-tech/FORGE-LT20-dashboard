@@ -123,6 +123,33 @@ type TechnicalAutoData = {
   warnings: string[];
 };
 
+type Sp500Member = {
+  ticker: string;
+  name: string;
+  sector: string;
+};
+
+type ScreenerCandidate = {
+  rank: number;
+  ticker: string;
+  name: string;
+  sector: string;
+  price: number | null;
+  buyZoneLow: number | null;
+  buyZoneHigh: number | null;
+  trimLow: number | null;
+  trimHigh: number | null;
+  score: number;
+  suggestedRole: "Core" | "Opportunistic";
+  action: "ADD TO BENCH" | "BUY ZONE" | "WATCH" | "CALL / TRIM" | "AVOID";
+  dataQuality: "Full Data" | "Partial Data" | "Price/TA Only" | "Fallback";
+  upside: number | null;
+  momentumScore: number | null;
+  qualityScore: number | null;
+  technicalScore: number | null;
+  sourceStatus: string;
+};
+
 type AnyRecord = Record<string, unknown>;
 
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
@@ -936,6 +963,261 @@ async function fetchCoveredCallCandidates(
   return candidates.sort((a, b) => b.score - a.score).slice(0, 5);
 }
 
+const FALLBACK_SP500: Sp500Member[] = [
+  { ticker: "AAPL", name: "Apple", sector: "Information Technology" },
+  { ticker: "MSFT", name: "Microsoft", sector: "Information Technology" },
+  { ticker: "NVDA", name: "NVIDIA", sector: "Information Technology" },
+  { ticker: "AMZN", name: "Amazon", sector: "Consumer Discretionary" },
+  { ticker: "META", name: "Meta Platforms", sector: "Communication Services" },
+  { ticker: "AVGO", name: "Broadcom", sector: "Information Technology" },
+  { ticker: "GOOGL", name: "Alphabet Class A", sector: "Communication Services" },
+  { ticker: "GOOG", name: "Alphabet Class C", sector: "Communication Services" },
+  { ticker: "BRK.B", name: "Berkshire Hathaway", sector: "Financials" },
+  { ticker: "LLY", name: "Eli Lilly", sector: "Health Care" },
+  { ticker: "JPM", name: "JPMorgan Chase", sector: "Financials" },
+  { ticker: "V", name: "Visa", sector: "Financials" },
+  { ticker: "MA", name: "Mastercard", sector: "Financials" },
+  { ticker: "NFLX", name: "Netflix", sector: "Communication Services" },
+  { ticker: "COST", name: "Costco", sector: "Consumer Staples" },
+  { ticker: "WMT", name: "Walmart", sector: "Consumer Staples" },
+  { ticker: "HD", name: "Home Depot", sector: "Consumer Discretionary" },
+  { ticker: "ORCL", name: "Oracle", sector: "Information Technology" },
+  { ticker: "CRM", name: "Salesforce", sector: "Information Technology" },
+  { ticker: "AMD", name: "Advanced Micro Devices", sector: "Information Technology" },
+  { ticker: "QCOM", name: "Qualcomm", sector: "Information Technology" },
+  { ticker: "TXN", name: "Texas Instruments", sector: "Information Technology" },
+  { ticker: "NOW", name: "ServiceNow", sector: "Information Technology" },
+  { ticker: "ADBE", name: "Adobe", sector: "Information Technology" },
+  { ticker: "PANW", name: "Palo Alto Networks", sector: "Information Technology" },
+  { ticker: "CRWD", name: "CrowdStrike", sector: "Information Technology" },
+  { ticker: "AXON", name: "Axon Enterprise", sector: "Industrials" },
+  { ticker: "GE", name: "GE Aerospace", sector: "Industrials" },
+  { ticker: "ETN", name: "Eaton", sector: "Industrials" },
+  { ticker: "PH", name: "Parker-Hannifin", sector: "Industrials" },
+  { ticker: "URI", name: "United Rentals", sector: "Industrials" },
+  { ticker: "CAT", name: "Caterpillar", sector: "Industrials" },
+  { ticker: "VST", name: "Vistra", sector: "Utilities" },
+  { ticker: "CEG", name: "Constellation Energy", sector: "Utilities" },
+  { ticker: "NEE", name: "NextEra Energy", sector: "Utilities" },
+  { ticker: "XOM", name: "Exxon Mobil", sector: "Energy" },
+  { ticker: "CVX", name: "Chevron", sector: "Energy" },
+  { ticker: "COP", name: "ConocoPhillips", sector: "Energy" },
+  { ticker: "LIN", name: "Linde", sector: "Materials" },
+  { ticker: "SHW", name: "Sherwin-Williams", sector: "Materials" },
+  { ticker: "UNH", name: "UnitedHealth", sector: "Health Care" },
+  { ticker: "ISRG", name: "Intuitive Surgical", sector: "Health Care" },
+  { ticker: "VRTX", name: "Vertex Pharmaceuticals", sector: "Health Care" },
+  { ticker: "REGN", name: "Regeneron", sector: "Health Care" },
+  { ticker: "ABBV", name: "AbbVie", sector: "Health Care" },
+  { ticker: "TMO", name: "Thermo Fisher", sector: "Health Care" },
+  { ticker: "MCK", name: "McKesson", sector: "Health Care" },
+  { ticker: "BKNG", name: "Booking Holdings", sector: "Consumer Discretionary" },
+  { ticker: "CMG", name: "Chipotle", sector: "Consumer Discretionary" },
+  { ticker: "RCL", name: "Royal Caribbean", sector: "Consumer Discretionary" },
+  { ticker: "UBER", name: "Uber", sector: "Industrials" },
+  { ticker: "FI", name: "Fiserv", sector: "Financials" },
+  { ticker: "SPGI", name: "S&P Global", sector: "Financials" },
+  { ticker: "ICE", name: "Intercontinental Exchange", sector: "Financials" },
+  { ticker: "KKR", name: "KKR", sector: "Financials" },
+  { ticker: "BX", name: "Blackstone", sector: "Financials" },
+  { ticker: "PLTR", name: "Palantir", sector: "Information Technology" },
+  { ticker: "ANET", name: "Arista Networks", sector: "Information Technology" },
+  { ticker: "LRCX", name: "Lam Research", sector: "Information Technology" },
+  { ticker: "KLAC", name: "KLA", sector: "Information Technology" },
+  { ticker: "AMAT", name: "Applied Materials", sector: "Information Technology" },
+];
+
+function decodeHtmlEntity(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&#039;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#160;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function stripHtml(html: string): string {
+  return decodeHtmlEntity(html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+}
+
+function marketDataTicker(ticker: string): string {
+  return normalizeTicker(ticker).replace(/\./g, "-");
+}
+
+function cleanSp500Ticker(ticker: string): string {
+  return normalizeTicker(stripHtml(ticker).replace(/\s+/g, ""));
+}
+
+async function fetchSp500Universe(): Promise<Sp500Member[]> {
+  try {
+    const response = await fetch("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies", {
+      cache: "no-store",
+      headers: { "user-agent": "Tenacity-FORGE-Screener/1.0" },
+    });
+    const html = await response.text();
+    if (!response.ok || !html) throw new Error(`Wikipedia response ${response.status}`);
+    const rows = html.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
+    const members: Sp500Member[] = [];
+    for (const row of rows) {
+      const cells = row.match(/<td[\s\S]*?<\/td>/gi) ?? [];
+      if (cells.length < 4) continue;
+      const ticker = cleanSp500Ticker(cells[0] ?? "");
+      const name = stripHtml(cells[1] ?? "");
+      const sector = stripHtml(cells[2] ?? "");
+      if (/^[A-Z][A-Z0-9.]{0,5}$/.test(ticker) && name && sector) {
+        members.push({ ticker, name, sector });
+      }
+    }
+    const unique = new Map<string, Sp500Member>();
+    for (const member of members) unique.set(member.ticker, member);
+    const result = Array.from(unique.values());
+    return result.length > 400 ? result : FALLBACK_SP500;
+  } catch {
+    return FALLBACK_SP500;
+  }
+}
+
+function scoreUpside(upside: number | null): number {
+  if (upside === null || !Number.isFinite(upside)) return 50;
+  if (upside >= 0.35) return 100;
+  if (upside >= 0.25) return 90;
+  if (upside >= 0.18) return 80;
+  if (upside >= 0.1) return 65;
+  if (upside >= 0.03) return 50;
+  if (upside >= -0.05) return 35;
+  return 20;
+}
+
+function serverTechnicalScore(ta: TechnicalAutoData | null, price: number | null): number {
+  if (!ta || !price || price <= 0) return 50;
+  let score = 55;
+  if (ta.above200dma) score += 10;
+  if (ta.confidence === "High") score += 15;
+  else if (ta.confidence === "Medium") score += 8;
+  else if (ta.confidence === "Low") score += 2;
+  if (ta.buyZoneLow && ta.buyZoneHigh) {
+    if (price >= ta.buyZoneLow && price <= ta.buyZoneHigh) score += 25;
+    else if (price > ta.buyZoneHigh && (!ta.trimLow || price < ta.trimLow)) score += 10;
+    else if (price < ta.buyZoneLow) score += 3;
+  }
+  if (ta.stopLevel && price < ta.stopLevel) score -= 35;
+  if (ta.trimLow && price >= ta.trimLow) score -= 10;
+  if (ta.trimHigh && price >= ta.trimHigh) score -= 15;
+  if (typeof ta.technicalExtension === "number") {
+    if (ta.technicalExtension >= 0.18) score -= 12;
+    else if (ta.technicalExtension >= 0.1) score -= 5;
+    else if (ta.technicalExtension >= -0.05 && ta.technicalExtension <= 0.08) score += 5;
+  }
+  return Math.round(clamp(score, 0, 100));
+}
+
+function combinedServerScore(signal: SignalAutoData | null, ta: TechnicalAutoData | null, price: number | null): number {
+  const upsideComponent = scoreUpside(signal?.upside ?? null);
+  const momentum = signal?.momentumScore ?? 50;
+  const revisions = signal?.recommendationScore ?? 50;
+  const momentumComposite = clamp(momentum * 0.7 + revisions * 0.3, 0, 100);
+  const quality = signal?.qualityScore ?? 50;
+  const technical = serverTechnicalScore(ta, price);
+  return Math.round(clamp(upsideComponent * 0.3 + momentumComposite * 0.25 + quality * 0.2 + technical * 0.25, 0, 100));
+}
+
+function candidateAction(score: number, ta: TechnicalAutoData | null, price: number | null): ScreenerCandidate["action"] {
+  if (score < 45) return "AVOID";
+  if (price && ta?.trimLow && price >= ta.trimLow) return "CALL / TRIM";
+  if (price && ta?.buyZoneLow && ta?.buyZoneHigh && price >= ta.buyZoneLow && price <= ta.buyZoneHigh && score >= 65) return "BUY ZONE";
+  if (score >= 75) return "ADD TO BENCH";
+  return "WATCH";
+}
+
+function dataQuality(signal: SignalAutoData | null, ta: TechnicalAutoData | null): ScreenerCandidate["dataQuality"] {
+  const hasSignal = Boolean(signal && (signal.upside !== null || signal.momentumScore !== null || signal.qualityScore !== null));
+  const hasTechnical = Boolean(ta && ta.buyZoneLow !== null && ta.buyZoneHigh !== null);
+  if (hasSignal && hasTechnical && ta?.confidence !== "Low") return "Full Data";
+  if (hasSignal && hasTechnical) return "Partial Data";
+  if (hasTechnical) return "Price/TA Only";
+  return "Fallback";
+}
+
+async function screenSp500Batch(
+  members: Sp500Member[],
+  token: string,
+): Promise<ScreenerCandidate[]> {
+  const candidates = await Promise.all(
+    members.map(async (member) => {
+      const apiTicker = marketDataTicker(member.ticker);
+      let quote: LiveQuote = {
+        ticker: member.ticker,
+        price: null,
+        change: null,
+        changePercent: null,
+        previousClose: null,
+        asOf: new Date().toISOString(),
+        source: "Unavailable",
+      };
+      try {
+        quote = await fetchQuote(apiTicker, token);
+      } catch {
+        // Leave quote unavailable; fallback TA will handle this.
+      }
+
+      let signal: SignalAutoData | null = null;
+      try {
+        signal = await fetchSignalAutoData(apiTicker, token, quote.price);
+      } catch {
+        signal = null;
+      }
+
+      let ta: TechnicalAutoData | null = null;
+      try {
+        ta = await fetchTechnicalAutoData(apiTicker, token, quote.price);
+      } catch (error) {
+        ta = fallbackTechnicalAutoData(
+          apiTicker,
+          quote.price,
+          error instanceof Error ? error.message : "technical data unavailable",
+        );
+      }
+
+      const score = combinedServerScore(signal, ta, quote.price);
+      const quality = dataQuality(signal, ta);
+      const sourceParts = [
+        signal?.upside !== null && signal?.upside !== undefined ? "target" : "no target",
+        signal?.momentumScore !== null && signal?.momentumScore !== undefined ? "momentum" : "no momentum",
+        signal?.qualityScore !== null && signal?.qualityScore !== undefined ? "quality" : "no quality",
+        ta?.buyZoneLow ? "TA" : "no TA",
+      ];
+
+      return {
+        rank: 0,
+        ticker: member.ticker,
+        name: member.name,
+        sector: member.sector,
+        price: quote.price,
+        buyZoneLow: ta?.buyZoneLow ?? null,
+        buyZoneHigh: ta?.buyZoneHigh ?? null,
+        trimLow: ta?.trimLow ?? null,
+        trimHigh: ta?.trimHigh ?? null,
+        score,
+        suggestedRole: score >= 75 && quality !== "Fallback" ? "Core" : "Opportunistic",
+        action: candidateAction(score, ta, quote.price),
+        dataQuality: quality,
+        upside: signal?.upside ?? null,
+        momentumScore: signal?.momentumScore ?? null,
+        qualityScore: signal?.qualityScore ?? null,
+        technicalScore: serverTechnicalScore(ta, quote.price),
+        sourceStatus: sourceParts.join(" / "),
+      } satisfies ScreenerCandidate;
+    }),
+  );
+
+  return candidates
+    .filter((item) => item.price !== null && item.price > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
+}
+
 export async function GET(request: Request) {
   const requestKey = request.headers.get("x-finnhub-key")?.trim();
   const token = requestKey || process.env.FINNHUB_API_KEY;
@@ -975,6 +1257,11 @@ export async function GET(request: Request) {
     .split(",")
     .map(normalizeTicker)
     .filter(Boolean);
+  const includeScreener =
+    url.searchParams.get("includeScreener") === "1" ||
+    url.searchParams.get("includeScreener") === "true";
+  const screenerOffset = Math.max(0, finiteNumber(url.searchParams.get("screenerOffset")) ?? 0);
+  const screenerLimit = clamp(finiteNumber(url.searchParams.get("screenerLimit")) ?? 75, 10, 120);
 
   const symbols = Array.from(new Set(["SPY", ...requestedSymbols])).slice(
     0,
@@ -1124,6 +1411,36 @@ export async function GET(request: Request) {
     );
   }
 
+  let screener: ScreenerCandidate[] = [];
+  let screenerMeta: {
+    universe: string;
+    offset: number;
+    limit: number;
+    processed: number;
+    universeSize: number;
+    asOf: string;
+  } | null = null;
+
+  if (includeScreener) {
+    try {
+      const universe = await fetchSp500Universe();
+      const batch = universe.slice(screenerOffset, screenerOffset + screenerLimit);
+      screener = await screenSp500Batch(batch, token);
+      screenerMeta = {
+        universe: "S&P 500",
+        offset: screenerOffset,
+        limit: screenerLimit,
+        processed: batch.length,
+        universeSize: universe.length,
+        asOf,
+      };
+    } catch (error) {
+      warnings.push(
+        `S&P 500 screener: ${error instanceof Error ? error.message : "screener unavailable"}`,
+      );
+    }
+  }
+
   return NextResponse.json({
     asOf,
     provider: requestKey ? "Finnhub / Settings key" : "Finnhub / Server env",
@@ -1136,6 +1453,8 @@ export async function GET(request: Request) {
     options,
     signal,
     technical,
+    screener,
+    screenerMeta,
     warnings,
   });
 }

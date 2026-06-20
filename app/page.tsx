@@ -7,6 +7,7 @@ type Tab =
   | "actionItems"
   | "holdings"
   | "bench"
+  | "sp500Screener"
   | "forgeSignal"
   | "taxLots"
   | "coveredCalls"
@@ -183,6 +184,36 @@ type TechnicalAutoData = {
   warnings: string[];
 };
 
+type ScreenerCandidate = {
+  rank: number;
+  ticker: string;
+  name: string;
+  sector: string;
+  price: number | null;
+  buyZoneLow: number | null;
+  buyZoneHigh: number | null;
+  trimLow: number | null;
+  trimHigh: number | null;
+  score: number;
+  suggestedRole: Sleeve;
+  action: "ADD TO BENCH" | "BUY ZONE" | "WATCH" | "CALL / TRIM" | "AVOID";
+  dataQuality: "Full Data" | "Partial Data" | "Price/TA Only" | "Fallback";
+  upside: number | null;
+  momentumScore: number | null;
+  qualityScore: number | null;
+  technicalScore: number | null;
+  sourceStatus: string;
+};
+
+type ScreenerMeta = {
+  universe: string;
+  offset: number;
+  limit: number;
+  processed: number;
+  universeSize: number;
+  asOf: string;
+};
+
 type MarketApiResponse = {
   asOf: string;
   provider: string;
@@ -195,6 +226,8 @@ type MarketApiResponse = {
   options?: Record<string, OptionCandidate[]>;
   signal?: Record<string, SignalAutoData>;
   technical?: Record<string, TechnicalAutoData>;
+  screener?: ScreenerCandidate[];
+  screenerMeta?: ScreenerMeta;
   warnings?: string[];
 };
 
@@ -203,6 +236,7 @@ const TAB_LABELS: Record<Tab, string> = {
   actionItems: "Action Items",
   holdings: "Holdings",
   bench: "Bench",
+  sp500Screener: "S&P 500 Screener",
   forgeSignal: "FORGE Signal",
   taxLots: "Tax Lots",
   coveredCalls: "Covered Calls",
@@ -213,11 +247,13 @@ const TAB_LABELS: Record<Tab, string> = {
 };
 
 const STORAGE_KEYS = {
+  activeTab: "forgeLt20ActiveTab.v1",
   holdings: "forgeLt20Holdings.v1",
   bench: "forgeLt20Bench.v1",
   calls: "forgeLt20CoveredCalls.v1",
   settings: "forgeLt20Settings.v1",
   liveSettings: "forgeLt20LiveSettings.v1",
+  screener: "forgeLt20Screener.v1",
 };
 
 const DEFAULT_TA_FIELDS = {
@@ -1102,19 +1138,31 @@ export default function ForgeDashboard() {
   const [useLiveQuotes, setUseLiveQuotes] = useState(true);
   const [autoRefreshQuotes, setAutoRefreshQuotes] = useState(false);
   const [finnhubApiKey, setFinnhubApiKey] = useState("");
+  const [screenerResults, setScreenerResults] = useState<ScreenerCandidate[]>([]);
+  const [screenerMeta, setScreenerMeta] = useState<ScreenerMeta | null>(null);
+  const [screenerLoading, setScreenerLoading] = useState(false);
+  const [screenerError, setScreenerError] = useState("");
+  const [screenerMessage, setScreenerMessage] = useState("");
 
   useEffect(() => {
     try {
+      const savedActiveTab = localStorage.getItem(STORAGE_KEYS.activeTab);
       const savedHoldings = localStorage.getItem(STORAGE_KEYS.holdings);
       const savedBench = localStorage.getItem(STORAGE_KEYS.bench);
       const savedCalls = localStorage.getItem(STORAGE_KEYS.calls);
       const savedSettings = localStorage.getItem(STORAGE_KEYS.settings);
       const savedLiveSettings = localStorage.getItem(STORAGE_KEYS.liveSettings);
+      const savedScreener = localStorage.getItem(STORAGE_KEYS.screener);
 
+      if (savedActiveTab) {
+        const parsedTab = JSON.parse(savedActiveTab) as Tab;
+        if (parsedTab in TAB_LABELS) setActiveTab(parsedTab);
+      }
       if (savedHoldings) setHoldings(JSON.parse(savedHoldings) as Holding[]);
       if (savedBench)
         setBenchCandidates(JSON.parse(savedBench) as BenchCandidate[]);
       if (savedCalls) setOpenCalls(JSON.parse(savedCalls) as CoveredCall[]);
+      if (savedScreener) setScreenerResults(JSON.parse(savedScreener) as ScreenerCandidate[]);
       if (savedSettings) {
         const s = JSON.parse(savedSettings) as {
           spy?: number;
@@ -1153,6 +1201,11 @@ export default function ForgeDashboard() {
 
   useEffect(() => {
     if (!hydrated) return;
+    localStorage.setItem(STORAGE_KEYS.activeTab, JSON.stringify(activeTab));
+  }, [activeTab, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem(STORAGE_KEYS.holdings, JSON.stringify(holdings));
   }, [holdings, hydrated]);
 
@@ -1165,6 +1218,11 @@ export default function ForgeDashboard() {
     if (!hydrated) return;
     localStorage.setItem(STORAGE_KEYS.calls, JSON.stringify(openCalls));
   }, [openCalls, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem(STORAGE_KEYS.screener, JSON.stringify(screenerResults.slice(0, 150)));
+  }, [screenerResults, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1588,6 +1646,134 @@ export default function ForgeDashboard() {
         i === index ? ({ ...b, [field]: value } as BenchCandidate) : b,
       ),
     );
+  }
+
+  function mergeScreenerCandidates(
+    current: ScreenerCandidate[],
+    incoming: ScreenerCandidate[],
+  ): ScreenerCandidate[] {
+    const map = new Map<string, ScreenerCandidate>();
+    for (const item of current) {
+      const ticker = normalizeTicker(item.ticker);
+      if (ticker) map.set(ticker, item);
+    }
+    for (const item of incoming) {
+      const ticker = normalizeTicker(item.ticker);
+      if (ticker) map.set(ticker, item);
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.score - a.score)
+      .map((item, index) => ({ ...item, rank: index + 1 }))
+      .slice(0, 150);
+  }
+
+  async function runSp500Screener(mode: "first" | "next" | "full") {
+    setScreenerLoading(true);
+    setScreenerError("");
+    const batchSize = 75;
+    let nextOffset = mode === "next" ? screenerMeta?.offset ?? screenerResults.length : 0;
+    let accumulated = mode === "next" ? screenerResults : [];
+
+    try {
+      const maxBatches = mode === "full" ? 7 : 1;
+      for (let batch = 0; batch < maxBatches; batch += 1) {
+        setScreenerMessage(
+          mode === "full"
+            ? `Running S&P 500 screen batch ${batch + 1}...`
+            : "Running S&P 500 screener...",
+        );
+        const response = await fetch(
+          `/api/market?includeScreener=1&screenerUniverse=sp500&screenerLimit=${batchSize}&screenerOffset=${nextOffset}`,
+          {
+            cache: "no-store",
+            headers: finnhubApiKey.trim()
+              ? { "x-finnhub-key": finnhubApiKey.trim() }
+              : undefined,
+          },
+        );
+        const data = (await response.json()) as MarketApiResponse & { error?: string };
+        if (!response.ok) throw new Error(data.error || "S&P 500 screen failed.");
+        accumulated = mergeScreenerCandidates(accumulated, data.screener ?? []);
+        setScreenerResults(accumulated);
+        if (data.screenerMeta) {
+          setScreenerMeta(data.screenerMeta);
+          nextOffset = data.screenerMeta.offset + data.screenerMeta.processed;
+          if (nextOffset >= data.screenerMeta.universeSize) break;
+        } else {
+          break;
+        }
+      }
+      setScreenerMessage(
+        `Screen complete. Ranked ${accumulated.length} stored candidates. Top 50 shown below.`,
+      );
+    } catch (error) {
+      setScreenerError(error instanceof Error ? error.message : "Unknown screener error.");
+    } finally {
+      setScreenerLoading(false);
+    }
+  }
+
+  function addScreenerToBench(candidate: ScreenerCandidate) {
+    const ticker = normalizeTicker(candidate.ticker);
+    if (!ticker) return;
+    setBenchCandidates((prev) => {
+      if (prev.some((item) => normalizeTicker(item.ticker) === ticker)) return prev;
+      const nextCandidate: BenchCandidate = {
+        rank: prev.length + 1,
+        ticker,
+        name: candidate.name || ticker,
+        sleeveFit: candidate.suggestedRole,
+        sector: candidate.sector || "Unclassified",
+        price: candidate.price ?? 0,
+        signalScore: candidate.score,
+        upside: candidate.upside ?? 0,
+        revisionScore: 50,
+        momentumScore: candidate.momentumScore ?? 50,
+        qualityScore: candidate.qualityScore ?? 50,
+        dispersion: 0,
+        buyZoneLow: candidate.buyZoneLow ?? 0,
+        buyZoneHigh: candidate.buyZoneHigh ?? 0,
+        buyAnchor: candidate.buyZoneLow && candidate.buyZoneHigh ? (candidate.buyZoneLow + candidate.buyZoneHigh) / 2 : 0,
+        stopLevel: 0,
+        trimLow: candidate.trimLow ?? 0,
+        trimHigh: candidate.trimHigh ?? 0,
+        taConfidence: candidate.dataQuality === "Full Data" ? "High" : candidate.dataQuality === "Partial Data" ? "Medium" : "Low",
+        taNotes: candidate.sourceStatus,
+        notes: `Added from S&P 500 Screener. Data quality: ${candidate.dataQuality}.`,
+      };
+      return [...prev, nextCandidate];
+    });
+    setActiveTab("bench");
+  }
+
+  function addScreenerToHoldings(candidate: ScreenerCandidate) {
+    addScreenerToBench(candidate);
+    setTimeout(() => {
+      const benchCandidate: BenchCandidate = {
+        rank: 1,
+        ticker: normalizeTicker(candidate.ticker),
+        name: candidate.name || candidate.ticker,
+        sleeveFit: candidate.suggestedRole,
+        sector: candidate.sector || "Unclassified",
+        price: candidate.price ?? 0,
+        signalScore: candidate.score,
+        upside: candidate.upside ?? 0,
+        revisionScore: 50,
+        momentumScore: candidate.momentumScore ?? 50,
+        qualityScore: candidate.qualityScore ?? 50,
+        dispersion: 0,
+        buyZoneLow: candidate.buyZoneLow ?? 0,
+        buyZoneHigh: candidate.buyZoneHigh ?? 0,
+        buyAnchor: candidate.buyZoneLow && candidate.buyZoneHigh ? (candidate.buyZoneLow + candidate.buyZoneHigh) / 2 : 0,
+        stopLevel: 0,
+        trimLow: candidate.trimLow ?? 0,
+        trimHigh: candidate.trimHigh ?? 0,
+        taConfidence: candidate.dataQuality === "Full Data" ? "High" : candidate.dataQuality === "Partial Data" ? "Medium" : "Low",
+        taNotes: candidate.sourceStatus,
+        notes: `Promoted from S&P 500 Screener. Data quality: ${candidate.dataQuality}.`,
+      };
+      addCandidateToHoldings(benchCandidate);
+    }, 0);
   }
 
   function addBenchCandidate() {
@@ -2588,6 +2774,145 @@ export default function ForgeDashboard() {
             </section>
           )}
 
+          {activeTab === "sp500Screener" && (
+            <section>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-black">S&amp;P 500 Universe Screener</h3>
+                  <p className="mt-2 text-sm text-[#344054]">
+                    Separate heavier screen for ranking the broader S&amp;P 500 universe. Normal Refresh Live Data updates Holdings and Bench; this tab screens the universe in batches so it does not slow the dashboard.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScreenerResults([]);
+                      setScreenerMeta(null);
+                      void runSp500Screener("first");
+                    }}
+                    className="bg-[#C9A84C] px-4 py-2 text-sm font-black text-white"
+                    disabled={screenerLoading}
+                  >
+                    Run First Batch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runSp500Screener("next")}
+                    className="border border-[#E5D8A8] px-4 py-2 text-sm font-black text-[#0D1B2A]"
+                    disabled={screenerLoading || !screenerMeta}
+                  >
+                    Run Next Batch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScreenerResults([]);
+                      setScreenerMeta(null);
+                      void runSp500Screener("full");
+                    }}
+                    className="border border-[#E5D8A8] bg-[#0D1B2A] px-4 py-2 text-sm font-black text-white"
+                    disabled={screenerLoading}
+                  >
+                    Run Full Screen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScreenerResults([]);
+                      setScreenerMeta(null);
+                      setScreenerMessage("");
+                    }}
+                    className="border border-[#E5D8A8] px-4 py-2 text-sm font-black text-[#B42318]"
+                    disabled={screenerLoading}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                {metricCard("Stored Candidates", String(screenerResults.length), "Ranked by score")}
+                {metricCard("Universe Progress", screenerMeta ? `${Math.min(screenerMeta.offset + screenerMeta.processed, screenerMeta.universeSize)} / ${screenerMeta.universeSize}` : "Not run", "S&P 500 batches")}
+                {metricCard("Top Candidate", screenerResults[0]?.ticker ?? "—", screenerResults[0] ? `${screenerResults[0].score}/100` : "Run screen")}
+                {metricCard("Selection Goal", "15 + 5", "Core + Opportunistic")}
+              </div>
+              {screenerMessage ? (
+                <div className="mt-4 border border-[#E5D8A8] bg-[#F0EBD8] p-3 text-sm text-[#344054]">
+                  {screenerMessage}
+                </div>
+              ) : null}
+              {screenerError ? (
+                <div className="mt-4 border border-[#F04438] bg-[#FEF3F2] p-3 text-sm font-bold text-[#B42318]">
+                  {screenerError}
+                </div>
+              ) : null}
+              <div className="mt-4 overflow-x-auto">
+                <table className="compact-data-table bench-table w-full border-collapse">
+                  <thead className="bg-[#0D1B2A] text-white">
+                    <tr>
+                      {["Rank", "Ticker", "Name", "Sector", "Role", "Price", "Buy Zone", "Call Zone", "Score", "Action", "Data", ""].map((h) => (
+                        <th key={h} className="p-3 text-left text-xs uppercase tracking-wide">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {screenerResults.slice(0, 50).map((s) => {
+                      const owned = ownedTickers.has(normalizeTicker(s.ticker));
+                      return (
+                        <tr key={s.ticker} className="border-b border-[#E5D8A8] align-top">
+                          <td className="p-2 font-black">{s.rank}</td>
+                          <td className="p-2 font-black">{s.ticker}</td>
+                          <td className="p-2">{s.name}</td>
+                          <td className="p-2">{s.sector || "—"}</td>
+                          <td className="p-2">{s.suggestedRole}</td>
+                          <td className="p-2">{valueBox(formatCurrencyTable(s.price), "LIVE", "neutral")}</td>
+                          <td className="p-2">{zoneBox(s.buyZoneLow, s.buyZoneHigh, "AUTO", "neutral")}</td>
+                          <td className="p-2">{zoneBox(s.trimLow, s.trimHigh, "AUTO", "neutral")}</td>
+                          <td className="p-2">{valueBox(formatMetric(s.score), scoreLabel(s.score), scoreTone(s.score))}</td>
+                          <td className="p-2">
+                            <span className={`border px-2 py-1 text-xs font-black ${statusPill(s.action === "AVOID" ? "SELL" : s.action === "CALL / TRIM" ? "COVER" : s.action === "BUY ZONE" ? "BUY" : "HOLD")}`}>
+                              {owned ? "OWNED" : s.action}
+                            </span>
+                          </td>
+                          <td className="p-2 text-[10px] leading-4 text-[#344054]">
+                            <div className="font-black text-[#0D1B2A]">{s.dataQuality}</div>
+                            <div>{s.sourceStatus}</div>
+                          </td>
+                          <td className="p-2">
+                            <div className="flex flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={() => addScreenerToBench(s)}
+                                className="bg-[#C9A84C] px-3 py-2 text-xs font-black text-white"
+                              >
+                                Add Bench
+                              </button>
+                              <button
+                                type="button"
+                                disabled={owned}
+                                onClick={() => addScreenerToHoldings(s)}
+                                className={`px-3 py-2 text-xs font-black ${owned ? "bg-slate-100 text-slate-400" : "border border-[#E5D8A8] text-[#0D1B2A]"}`}
+                              >
+                                {owned ? "Owned" : "Promote"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {screenerResults.length === 0 && !screenerLoading ? (
+                <div className="mt-4 border border-[#E5D8A8] bg-white p-4 text-sm text-[#344054]">
+                  No screen results yet. Use <strong>Run First Batch</strong> for a quick sample, or <strong>Run Full Screen</strong> for the broader universe. Full screen may take time and can hit API limits on free data plans.
+                </div>
+              ) : null}
+            </section>
+          )}
+
           {activeTab === "forgeSignal" && (
             <section>
               <h3 className="text-xl font-black">FORGE Signal Engine</h3>
@@ -2613,10 +2938,9 @@ export default function ForgeDashboard() {
               </div>
               <div className="mt-5 border border-[#E5D8A8] bg-[#F0EBD8] p-4 text-sm leading-6 text-[#344054]">
                 Current build: the main Bench and Holdings pages intentionally
-                expose fewer fields. Refresh Live Data still updates the underlying
-                upside, revisions, momentum, quality, and technical inputs, but the
-                dashboard rolls them into one locked 0–100 FORGE Score plus Buy Zone
-                and Call Zone outputs.
+                expose fewer fields. Refresh Live Data updates the names already in
+                Holdings and Bench; the S&P 500 Screener tab separately ranks a broader
+                universe so Bench candidates can be refreshed over time.
               </div>
               <div className="mt-5 overflow-x-auto">
                 <table className="w-full min-w-[980px] border-collapse text-sm">
@@ -3101,10 +3425,14 @@ export default function ForgeDashboard() {
                 dividend-income proxies.
               </p>
               <div className="mt-5 grid gap-3 md:grid-cols-4">
+                {metricCard("Net Liq", formatCurrency(snapshot.netLiquidationValue), "cash + holdings - margin")}
+                {metricCard("Total P&L", formatCurrency(snapshot.totalPnl), "unrealized vs entered cost")}
+                {metricCard("Weighted Score", formatMetric(snapshot.weightedForgeScore), "current holdings")}
+                {metricCard("Benchmark", "SPY", "FORGE primary yardstick")}
                 {metricCard("Target Return", "~15%", "pre-tax cycle target")}
-                {metricCard("Benchmark", "S&P 500", "Total return")}
                 {metricCard("Tax Goal", "LTCG", "366+ days preferred")}
                 {metricCard("Turnover", "Low/Mod", "Core biased to hold")}
+                {metricCard("Screener", screenerResults.length ? `${screenerResults.length} names` : "Not run", "S&P 500 candidate pool")}
               </div>
             </section>
           )}
